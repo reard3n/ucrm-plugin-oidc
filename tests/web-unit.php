@@ -33,6 +33,8 @@ final class Application
     public ?string $callbackUrl = null;
     public ?string $backchannelLogoutUrl = null;
     public bool $legacyCleanupPending = false;
+    public bool $providerConfigured = false;
+    public ?array $auditItems = null;
     public ?\Throwable $failure = null;
     public function __construct() {
         $this->session = new NativeSession();
@@ -42,7 +44,7 @@ final class Application
     public function native(): NativeSession { return $this->session; }
     public function status(): array { return ['enabled' => $this->ready, 'ready' => $this->ready, 'loginLabel' => 'Provider <script>bad</script>', 'secret' => 'NEVER_RENDER']; }
     public function authorizationOrigins(): array { return ['https://idp.example.test']; }
-    public function configuration(array $context): array { return ['settings' => Config::DEFAULTS, 'providerRevision' => 2, 'credentialRevision' => 3, 'secretPresent' => true, 'callbackUrl' => $this->callbackUrl, 'backchannelLogoutUrl' => $this->backchannelLogoutUrl, 'legacyCleanupPending' => $this->legacyCleanupPending, 'native' => ['enabled' => false, 'pluginEnabled' => true, 'nativeVersion' => 'unit', 'nativeConfigRevision' => null], 'ready' => false]; }
+    public function configuration(array $context): array { return ['settings' => Config::DEFAULTS, 'providerRevision' => 2, 'credentialRevision' => 3, 'secretPresent' => true, 'callbackUrl' => $this->callbackUrl, 'backchannelLogoutUrl' => $this->backchannelLogoutUrl, 'legacyCleanupPending' => $this->legacyCleanupPending, 'providerConfigured' => $this->providerConfigured, 'native' => ['enabled' => false, 'pluginEnabled' => true, 'nativeVersion' => 'unit', 'nativeConfigRevision' => null], 'ready' => false]; }
     public function csrf(string $binding, string $purpose): string { return hash('sha256', $binding . ':' . $purpose); }
     public function checkCsrf(string $binding, string $purpose, string $token): void { if (!hash_equals($this->csrf($binding, $purpose), $token)) throw new AppException('CSRF_DENIED', 403); }
     public function assertFresh(array $context): void { if (!$this->fresh) throw new AppException('RECENT_AUTH_REQUIRED', 403); }
@@ -59,7 +61,7 @@ final class Application
         $this->record('records', ['kind' => $kind] + $query);
         $items = $kind === 'bindings' ? [['id' => str_repeat('a', 64), 'issuer' => 'https://idp.example.test', 'subject' => '<img src=x onerror=bad>', 'nativeUserId' => 'hidden-native-id', 'username' => 'existing-user', 'active' => true, 'version' => 7, 'createdAt' => 1, 'updatedAt' => 2]]
             : [['id' => 1, 'event' => '<script>bad</script>', 'at' => 1, 'actor' => 'hash-a', 'object' => 'hash-b', 'outcome' => 'passed']];
-        return ['items' => $items, 'total' => 26, 'page' => $query['page'], 'pageSize' => 25];
+        return ['items' => $kind === 'audit' && $this->auditItems !== null ? $this->auditItems : $items, 'total' => 26, 'page' => $query['page'], 'pageSize' => 25];
     }
     public function start(string $browser, string $return, array $audit, ?array $preview = null, bool $fresh = false): array { $this->record('start', compact('browser', 'return', 'audit', 'preview', 'fresh')); return ['flowId' => str_repeat('f', 64), 'authorizationUrl' => 'https://idp.example.test/authorize?state=synthetic-state']; }
     public function callback(string $browser, array $parameters, array $audit): array { $this->record('callback', $parameters); return ['flowId' => str_repeat('f', 64)]; }
@@ -118,6 +120,24 @@ $app->fresh = false;
 foreach (['settings', 'secret-replace', 'secret-clear', 'unlink', 'relink'] as $action) { check($post($action)['status'] === 403, 'recent authentication required for ' . $action); }
 check($post('setup')['status'] === 200, 'setup diagnostics do not require fresh authentication');
 check($post('test')['status'] === 200, 'discovery test does not require fresh authentication');
+$app->providerConfigured = true;
+$configured = $web->handle($server, [], [], $cookies);
+check(has($configured['body'], '<dt>Provider configuration</dt><dd>Configured</dd>') && has($configured['body'], '<dt>OpenID Connect login</dt><dd>Disabled</dd>'), 'configured provider is independent of disabled admission');
+check(has($configured['body'], 'Not checked in this page view'), 'reload does not imply discovery succeeded');
+check(has($post('test')['body'], 'Passed in this request') && has($post('test')['body'], 'does not verify client credentials'), 'discovery success has its own limited status');
+$draft = $post('settings', ['issuer' => 'https://draft.example.test', 'clientId' => '<script>draft</script>', 'expectedProviderRevision' => '2']);
+check($draft['status'] === 403 && has($draft['body'], 'https://draft.example.test') && has($draft['body'], '&lt;script&gt;draft&lt;/script&gt;'), 'recent-auth refusal retains and escapes non-secret settings');
+check(has($draft['body'], 'href="/nms/" target="_blank"') && has($draft['body'], 'choose Sign Out') && has($draft['body'], 'reload provider settings'), 'recovery describes real native sign-out and return without login loop');
+check($draft['headers']['Referrer-Policy'] === 'same-origin' && has($draft['body'], 'data-draft-state="recovery"'), 'recovery can reload and submit with exact origin');
+check(!has($post('secret-replace', ['clientSecret' => 'UNSAVED_SECRET'])['body'], 'UNSAVED_SECRET'), 'recent-auth refusal never reflects submitted secret');
+$app->ready = false;
+foreach (['0', '1'] as $isPreview) {
+    $disabled = $web->handle($server, ['action' => 'start', 'preview' => $isPreview], [], $cookies);
+    check($disabled['status'] === 403 && has($disabled['body'], 'New OpenID Connect sign-ins are disabled') && has($disabled['body'], 'Ordinary OIDC login is available during that window'), 'disabled start gives actionable gate explanation');
+}
+$before = count($app->calls);
+check($web->handle($postServer, ['action' => 'start'], ['csrf' => $app->csrf($browser, 'flow:start'), 'preview' => '1'], $cookies)['status'] === 403 && count($app->calls) === $before, 'disabled preview POST cannot contact provider');
+$app->ready = true;
 check($post('lookup', ['email' => 'existing@example.test', 'bindingId' => str_repeat('a', 64), 'expectedVersion' => '7'])['status'] === 200, 'native lookup requires permission but not freshness');
 $app->fresh = true;
 $settings = Config::DEFAULTS; $settings['maxAge'] = '0'; $settings['endpointOrigins'] = "https://one.example.test\r\nhttps://two.example.test\n";
@@ -218,6 +238,13 @@ check(has($bindings['body'], 'page=2') && !has($bindings['body'], '<table'), 'bi
 check(!has($bindings['body'], '<img src=x') && !has($bindings['body'], 'hidden-native-id'), 'binding display escapes subject and omits internal UUID');
 $audit = $web->handle($server, ['action' => 'audit'], [], $cookies);
 check(!has($audit['body'], '<script>bad</script>') && has($audit['body'], 'hash-a'), 'audit safe projection');
+$priorZone = date_default_timezone_get(); date_default_timezone_set('America/New_York');
+$app->auditItems = array_map(static fn($value): array => ['event' => 'settings.saved', 'at' => $value, 'actor' => 'hash-a', 'object' => 'hash-b', 'outcome' => 'saved'], [0, 1794667453, '1794667454', null, 'invalid', -1, []]);
+$dated = $web->handle($server, ['action' => 'audit'], [], $cookies);
+check(has($dated['body'], '1970-01-01 00:00:00 UTC') && has($dated['body'], '2026-11-14 14:44:13 UTC') && has($dated['body'], '2026-11-14 14:44:14 UTC'), 'audit renders multiple epochs including zero in explicit UTC independent of server timezone');
+check(has($dated['body'], 'datetime="2026-11-14T14:44:13Z" title="Unix timestamp: 1794667453"') && substr_count($dated['body'], '<dd>Unknown</dd>') === 4, 'audit retains exact epoch and handles absent or invalid timestamps');
+check($app->auditItems[1]['at'] === 1794667453 && has($dated['body'], 'hash-a') && has($dated['body'], 'hash-b'), 'audit does not change event timestamps or redacted references');
+$app->auditItems = null; date_default_timezone_set($priorZone);
 foreach ([$start, $bindings, $audit, $result] as $formPage) {
     check($formPage['headers']['Referrer-Policy'] === 'same-origin', 'successful clean form page uses same-origin referrer policy');
 }

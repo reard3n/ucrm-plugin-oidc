@@ -155,7 +155,29 @@ credentials, and prove native password/admin access remains functional.
 Upload the qualified flat plugin ZIP through **System > Plugins**. Enable the
 plugin, open its native Settings page and use the embedded provider form. Set the
 issuer, client ID/authentication method, write-only secret and verified-email
-source; test discovery and the protected preview before enabling new sign-ins.
+source. Keep new sign-ins disabled while saving configuration and testing discovery.
+"Configured" means settings and the required secret are saved; discovery is a
+separate check and does not establish credential validity, account matching,
+native session issuance or logout.
+
+The native adapter gates account lookup on the new-login switch, so protected
+identity preview also requires that switch. When ready for a controlled test,
+temporarily enable OpenID Connect login in native Settings and run **Preview
+verified identity and native account match** as an administrator. Ordinary OIDC
+login is available during this window. Preview itself never creates an account
+link or native session. Disable new sign-ins again after the test if rollout is
+not ready, including if the provider independently denies access. Test actual
+session issuance and logout separately before leaving sign-ins enabled.
+
+Settings and credential changes require authentication within five minutes.
+Opening `/nms/login` while already signed in does not refresh the native session:
+use the native account menu to sign out, then sign in again. The recovery page
+opens that menu in a separate tab and provides a link back to reload settings
+with the new session's CSRF token. With browser storage available, only non-secret
+provider fields are retained in the original tab for 15 minutes, scoped to the
+same administrator and provider revision. Re-enter client secrets. Nothing signs
+out the administrator automatically or resubmits a pending change.
+
 Register the exact displayed login and back-channel logout URLs with the provider.
 Prove inbound signed logout delivery using normal server CA/hostname validation.
 Outbound discovery success does not establish inbound callback reachability.

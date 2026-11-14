@@ -35,6 +35,23 @@ tmpfs transport test cannot establish this Docker lifecycle behavior.
 
 ## PHP
 
+For setup issues #2–#5, the focused regression commands are:
+
+```text
+php tests/setup-issues.php
+php tests/web-unit.php
+node tests/settings-draft-browser.cjs
+```
+
+The setup regression uses the real HTTP handler, application and native-session
+authorization with synthetic transport/provider fixtures. It covers configuration
+completeness versus admission, first-time disabled setup, stale/fresh sessions,
+CSRF renewal, and the documented bounded-activation preview with no session/link
+creation. Web tests cover the recovery UI and UTC audit formatting. The browser
+test covers draft restoration, expiry, revision/user isolation, discarded drafts
+and unavailable storage; secrets and authentication tokens are never retained.
+These are focused regressions, not a fresh full native-platform qualification.
+
 Use Linux PHP 8.2 and 8.3 with curl, JSON, mbstring, OpenSSL, PDO/SQLite and sodium.
 Concurrency tests also need `pcntl`/process functions. Install the exact locked
 production dependencies through the isolated build procedure, then point
