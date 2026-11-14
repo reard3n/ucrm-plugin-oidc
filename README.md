@@ -9,10 +9,13 @@ The **0.3.1 release candidate has passed package qualification, native frontend
 updates and scoped provider login/logout checks** on both listed profiles.
 Download the [staging-qualified v0.3.1 prerelease](https://github.com/reard3n/ucrm-plugin-oidc/releases/tag/v0.3.1).
 See the [acceptance summary](docs/compatibility.md#public-031-package) for the
-exact package hashes, completed checks and test limits. Runtime implementation and locked
-dependencies are unchanged from the preceding tested 0.3.0 candidate. Native
-adapter source matches the qualified integration, but a fresh public native-image
-build has not been executed. Operational records and credentials are not published.
+exact package hashes, completed checks and test limits. The PHP runtime and locked
+dependencies are unchanged from the preceding tested 0.3.0 candidate. The
+[adapter identity update](docs/compatibility.md#discovered-service-identities)
+adds deployment-specific UID/GID discovery and has passed fresh native builds,
+password/OIDC login and signed revocation on both profiles. Use that adapter
+source with the unchanged qualified ZIP; the original v0.3.1 adapter assumes a
+shared service UID. Operational records and credentials are not published.
 First-party source is available under the [MIT license](LICENSE), also included
 in the packaged plugin. Bundled dependencies retain their own license notices.
 

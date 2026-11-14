@@ -108,10 +108,59 @@ container was covered.
 
 The PHP runtime and dependency lock match the preceding qualified implementation
 byte-for-byte; only package version/URL, licensing metadata and notices changed.
-The adapter modules, bootstrap and entrypoint also match the previously tested
-native build contexts. **No fresh native adapter image was built from this
-public repository.** Native-image build acceptance remains separate from the
-plugin ZIP's completed checks and native updates.
+At the original v0.3.1 qualification, the adapter modules, bootstrap and entrypoint
+matched the previously tested native build contexts; a fresh public-source image
+had not yet been built. That historical package result remains unchanged. The
+following successor acceptance qualifies the later adapter separately.
+
+## Discovered service identities
+
+The adapter from public commit `85982c5505032a78381b0d46442e9008661fa145`
+removes the fixed native service UID assumption. Read-only discovery resolves the
+running API identity and CRM plugin pool independently. A root-owned, read-only
+contract controls narrowly scoped key/socket permissions; the native accounts,
+groups and application data are not changed to fit the adapter.
+
+Two immutable images were built without network access from that exact commit,
+using the pinned vendor profiles and login-button integration without a canary
+restriction. These are local image IDs, not public registry digests:
+
+| Profile | Adapter image ID | Tested native service identities |
+| --- | --- | --- |
+| UISP 2.4.220 / CRM 4.4.33 | `sha256:131137a851021c53aad52a6178c7ec1f1ee2caac3560e428e4ec8d08cdeccc69` | API 1001:1001, CRM 1000:1000 |
+| UISP 3.1.73 / CRM 4.6.20 | `sha256:a6a1bca57bfb81eeb400354b0f8ffdd331e6c9a3e669ae60b8abf48aba9e9db3` | API and CRM 1000:1000 |
+
+The numeric values above are test arrangements, not deployment defaults. The
+same transport passed isolated Linux cases with unequal arbitrary IDs, reversed
+roles and a shared UID with different GIDs. All four arrangements passed two
+socket generations, authenticated transport, invalid-MAC and unrelated-user
+denial, fresh provisioning and nonempty-resource refusal. Separate-UID CRM
+callers could not replace the key or socket. The source suites passed 32 Node
+tests and six discovery tests, including both containers' namespace-map checks.
+
+Both native profiles retained the exact 996-file qualified 0.3.1 ZIP. Each full
+provider preparation passed six fresh OIDC logins across the two app registrations
+and three native-password controls. Signed target logout passed on each profile,
+with unchanged permissions and surviving password, other-user, other-session and
+other-app controls. The split-UID profile also preserved all nine live controls
+through API container replacement before the signed revocation. Keys, encrypted
+settings and bindings survived; cleanup left zero plugin session/context rows and
+no pending logout work in either lab. All 18 owned native and 12 provider sessions
+from the successful preparations were cleaned.
+
+The first attempt exposed Docker's empty-volume copy behavior: image-directory
+metadata replaced prepared socket ownership, so the adapter refused activation
+and native password login remained available. The failed attempt and its cleanup
+were retained. Setting `volume.nocopy: true`, restoring only the dedicated socket
+directory's planned ownership and repeating native acceptance resolved it. The
+installation instructions require this setting on every prepared-volume consumer.
+On the newer profile, the existing separate device service exited cleanly during
+API replacement; its same container was restarted with its configuration intact.
+
+No PHP package rebuild, production installation or future-version certification
+is claimed by this adapter acceptance. Use the newer adapter source and the
+updated provisioning instructions; the immutable v0.3.1 tag still contains the
+older shared-UID adapter and its historical installation instructions.
 
 Unknown native bytes fail closed for OIDC and retain native password startup.
 Vendor updates need a new reviewed profile and native/provider acceptance.

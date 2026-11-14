@@ -7,13 +7,31 @@ documentation IPs, loopback TLS servers and generated keys belong to fixtures.
 ## Source and artifact boundaries
 
 ```text
-node --test adapter/test/adapter.test.cjs deployment/bootstrap.test.cjs
+node --test adapter/test/adapter.test.cjs adapter/test/identity.test.cjs deployment/bootstrap.test.cjs
+python deployment/discover-runtime.test.py
 python deployment/plugin-package.test.py
 ```
 
 These test authenticated transport, eligibility/receipt behavior, bounded replay,
 source-hash/startup guards, login-page patching and deterministic ZIP boundaries.
 They do not launch native containers.
+
+The identity tests reject missing, conflicting, root and remapped service
+identities and exercise arbitrary, unequal UID/GID values. The isolated Linux
+fixture `adapter/test/identity-linux.cjs` additionally uses real process identity
+changes and Unix sockets. Run it only in a disposable root container with private
+tmpfs mounts at `/run` and `/etc/ucrm-oidc`, a read-only checkout, no network and
+`UCRM_OIDC_ISOLATED_IDENTITY_TEST=1`. It needs the normal root ownership/process
+capabilities; vendor Node binaries with file capabilities also need their matching
+bounding capability. Never mount deployment keys, state or sockets into this test.
+It checks four identity arrangements, two socket generations each, authenticated
+transport, wrong-MAC rejection, unrelated-user denial, a separate-UID client's
+inability to replace the server socket/key, and refusal to initialize nonempty resources.
+
+Native acceptance must separately exercise named-volume initialization and API
+replacement. An empty socket volume needs Docker `nocopy` on all consumers so
+image-directory metadata does not overwrite its prepared ownership. A unit or
+tmpfs transport test cannot establish this Docker lifecycle behavior.
 
 ## PHP
 
@@ -76,5 +94,6 @@ publishing raw credentials or vendor source. The
 [0.3.1 public-package acceptance summary](compatibility.md#public-031-package)
 records the exact tested ZIP, 697 extracted-package assertions per PHP runtime,
 native updates and scoped provider smoke results. It preserves the latest
-browser-runner interruption and successful continuation. A fresh native adapter
-image build from this public repository remains a separate, unexecuted gate.
+browser-runner interruption and successful continuation. The later
+[discovered-identity acceptance](compatibility.md#discovered-service-identities)
+records fresh public-source adapter builds and their separate native checks.

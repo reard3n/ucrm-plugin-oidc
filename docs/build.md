@@ -68,5 +68,8 @@ The image keeps pristine/generated native bytes for guarded startup and recovery
 Unknown hashes fail closed. This repository supplies the patcher and adapter,
 not complete native bundles or redistributable vendor images. Qualify the built
 image with native password/MFA/permission and process-lifecycle checks before
-promotion. The 0.3.1 plugin ZIP passed its documented checks; a fresh native
-adapter image build from this public repository has not been executed or accepted.
+promotion. The unchanged 0.3.1 plugin ZIP and fresh adapter images from public
+commit `85982c5505032a78381b0d46442e9008661fa145` passed the
+[documented identity and native acceptance](compatibility.md#discovered-service-identities).
+An arbitrary new build still requires qualification; local image IDs are not
+published registry digests, and vendor-containing images are not distributed.

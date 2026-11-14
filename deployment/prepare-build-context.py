@@ -26,7 +26,7 @@ def main() -> None:
     if not re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', args.docker_context):
         raise SystemExit('Invalid Docker context name')
     required = [f'deployment/{name}' for name in ['Dockerfile', 'bootstrap.cjs', 'entrypoint.sh', 'compatibility.json']]
-    required += [f'adapter/{name}.cjs' for name in ['index', 'native', 'protocol']]
+    required += [f'adapter/{name}.cjs' for name in ['index', 'native', 'protocol', 'identity']]
     archive = subprocess.check_output(['git', '-C', str(repo), 'archive', '--format=tar', revision, '--', *required])
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)

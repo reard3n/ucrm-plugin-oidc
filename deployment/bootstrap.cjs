@@ -5,6 +5,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const identity = require(fs.existsSync(path.join(__dirname, 'identity.cjs')) ? './identity.cjs' : '../adapter/identity.cjs');
 const ROOT = '/opt/ucrm-oidc-adapter';
 const SOCKET = '/run/ucrm-oidc-adapter';
 const KEY = '/run/secrets/ucrm-oidc-key';
@@ -113,16 +114,20 @@ function activate() {
     login = {patched};
   }
   if (process.env.UCRM_OIDC_ADAPTER_ENABLED !== '1') return;
-  if (process.getuid() !== 0 || process.env.UNMS_USER_ID !== '1000') throw new Error('unsupported_runtime_user');
+  if (process.getuid() !== 0) throw new Error('unsupported_bootstrap_user');
+  const runtime = identity.read();
+  if (process.env.UNMS_USER_ID !== undefined
+      && process.env.UNMS_USER_ID !== String(runtime.api.uid)) throw new Error('native_process_identity_changed');
+  const access = identity.permissions(runtime);
   const parent = fs.lstatSync(path.dirname(KEY));
-  if (!parent.isDirectory() || parent.uid !== 1000 || ![0o500, 0o700].includes(parent.mode & 0o777)) throw new Error('invalid_key_directory');
+  if (!identity.matches(parent, access.keyDirectory, 'directory')) throw new Error('invalid_key_directory');
   const keyStat = fs.lstatSync(KEY);
-  if (!keyStat.isFile() || keyStat.uid !== 1000 || (keyStat.mode & 0o777) !== 0o400
+  if (!identity.matches(keyStat, access.key, 'file')
       || !/^[0-9a-f]{64}(?:\r?\n)?$/.test(regular(KEY).toString('utf8'))) throw new Error('invalid_key');
   regular(path.join(ROOT, 'index.cjs'));
-  if (!fs.lstatSync(SOCKET).isDirectory()) throw new Error('dedicated_socket_volume_required');
-  // Only the separately mounted volume root; never recurse into native data.
-  fs.chownSync(SOCKET, 1000, 1000); fs.chmodSync(SOCKET, 0o700);
+  // Provisioning owns permissions. Startup only verifies them, and never changes
+  // a native account, group membership, data tree or even an unexpected mount.
+  if (!identity.matches(fs.lstatSync(SOCKET), access.socketDirectory, 'directory')) throw new Error('invalid_socket_directory');
   atomicReplace(profile.file, generated);
   if (login) atomicReplace(PUBLIC_INDEX, login.patched);
 }
