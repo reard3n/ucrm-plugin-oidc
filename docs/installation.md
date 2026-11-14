@@ -182,6 +182,13 @@ Register the exact displayed login and back-channel logout URLs with the provide
 Prove inbound signed logout delivery using normal server CA/hostname validation.
 Outbound discovery success does not establish inbound callback reachability.
 
+After the protected start form is submitted, a same-origin transition page opens
+the validated provider authorization URL. This lets the provider use a separate
+upstream login service without adding that service to the plugin's form-action
+policy. If automatic navigation is unavailable, choose **Continue to provider**.
+A stalled navigation offers recovery; it does not automatically retry sign-in.
+Provider context/session failures must still be resolved at the provider.
+
 Save login availability and the native execution schedule separately. Keep the
 plugin enabled and select five-minute maintenance for pending native cleanup.
 The new-login checkbox may be off while valid logout callbacks remain accepted.

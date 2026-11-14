@@ -82,8 +82,9 @@ try {
     check('bounded activation allows protected preview confirmation', $confirmation['status'] === 200 && str_contains($confirmation['body'], 'does not sign in or change account links'));
     $flowCsrf = $app->csrf($cookies[Web::BROWSER_COOKIE], 'flow:start');
     $redirect = $web->handle($postServer, ['action' => 'start'], ['csrf' => $flowCsrf, 'preview' => '1'], $cookies);
-    check('authorized preview starts through CSRF protected POST', $redirect['status'] === 303);
-    parse_str(parse_url($redirect['headers']['Location'], PHP_URL_QUERY), $query);
+    check('authorized preview starts through CSRF protected POST', $redirect['status'] === 200 && !isset($redirect['headers']['Location']));
+    preg_match('/id="oidc-provider-continue"[^>]*href="([^"]+)"/', $redirect['body'], $destination);
+    parse_str(parse_url(html_entity_decode($destination[1], ENT_QUOTES, 'UTF-8'), PHP_URL_QUERY), $query);
     $code = $f['provider']->register($query);
     $callback = $web->handle($server, ['action' => 'callback', 'state' => $query['state'], 'code' => $code], [], $cookies);
     parse_str(parse_url($callback['headers']['Location'], PHP_URL_QUERY), $completeQuery);
