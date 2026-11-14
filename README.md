@@ -9,8 +9,8 @@ Version **0.3.1 is a public packaging candidate**. Its package build and native
 installation acceptance are pending. Runtime implementation and dependency
 versions are unchanged from the preceding privately tested 0.3.0 candidate;
 this repository does not publish that environment's operational records.
-First-party Composer metadata remains `proprietary` pending the owner's license
-decision. Third-party MIT notices do not license the first-party implementation.
+First-party source is available under the [MIT license](LICENSE), also included
+in the packaged plugin. Bundled dependencies retain their own license notices.
 
 ## Behavior
 

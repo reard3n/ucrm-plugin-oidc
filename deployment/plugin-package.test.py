@@ -28,7 +28,7 @@ class PackageTests(unittest.TestCase):
         for path in ['.env', 'data/config.json', 'ucrm.json', 'private/state.db', 'tests/fixture.php',
                      'vendor/autoload.php', 'public/data/key.json', 'src/private/config.php']:
             self.assertFalse(package.source_allowed(path), path)
-        for path in ['manifest.json', 'composer.lock', 'NOTICE.md', 'hook_remove.php', 'src/NativeSession.php', 'public/login-button.js']:
+        for path in ['manifest.json', 'composer.lock', 'LICENSE', 'NOTICE.md', 'hook_remove.php', 'src/NativeSession.php', 'public/login-button.js']:
             self.assertTrue(package.source_allowed(path), path)
 
     def test_portable_context_names_and_local_endpoints_only(self):

@@ -18,7 +18,7 @@ PHP_IMAGE = 'ubnt/unms-crm@sha256:23f9284acd80faf4d7f0afff871c5a2f1d1b2c492280a8
 ROOT_FILES = {'manifest.json', 'composer.json', 'composer.lock', 'main.php', 'public.php', 'README.md',
               'LICENSE', 'LICENSE.md', 'NOTICE', 'NOTICE.md',
               *('hook_' + name + '.php' for name in ['install', 'configure', 'enable', 'disable', 'update', 'remove'])}
-REQUIRED = {'manifest.json', 'composer.json', 'composer.lock', 'main.php', 'public.php', 'public/login-button.js',
+REQUIRED = {'manifest.json', 'composer.json', 'composer.lock', 'LICENSE', 'NOTICE.md', 'main.php', 'public.php', 'public/login-button.js',
             *('hook_' + name + '.php' for name in ['install', 'configure', 'enable', 'disable', 'update', 'remove'])}
 VENDOR_EXCLUDED = {'tests', 'test', 'spec', 'specs', 'fixtures', 'examples', 'docs', '.git', '.github', 'bin'}
 

@@ -1,7 +1,7 @@
 {
   "name": "awacs/ucrm-oidc",
   "description": "OIDC authentication using existing native UISP/CRM staff sessions",
-  "license": "proprietary",
+  "license": "MIT",
   "type": "project",
   "require": {
     "php": "^8.2",
