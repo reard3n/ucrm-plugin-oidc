@@ -36,6 +36,7 @@ final class Application
     public bool $providerConfigured = false;
     public ?array $auditItems = null;
     public ?\Throwable $failure = null;
+    public string $authorizationUrl = 'https://idp.example.test/authorize?state=synthetic-state';
     public function __construct() {
         $this->session = new NativeSession();
         $this->completionVm = ['kind' => 'session', 'returnPath' => '/crm/'];
@@ -63,7 +64,7 @@ final class Application
             : [['id' => 1, 'event' => '<script>bad</script>', 'at' => 1, 'actor' => 'hash-a', 'object' => 'hash-b', 'outcome' => 'passed']];
         return ['items' => $kind === 'audit' && $this->auditItems !== null ? $this->auditItems : $items, 'total' => 26, 'page' => $query['page'], 'pageSize' => 25];
     }
-    public function start(string $browser, string $return, array $audit, ?array $preview = null, bool $fresh = false): array { $this->record('start', compact('browser', 'return', 'audit', 'preview', 'fresh')); return ['flowId' => str_repeat('f', 64), 'authorizationUrl' => 'https://idp.example.test/authorize?state=synthetic-state']; }
+    public function start(string $browser, string $return, array $audit, ?array $preview = null, bool $fresh = false): array { $this->record('start', compact('browser', 'return', 'audit', 'preview', 'fresh')); return ['flowId' => str_repeat('f', 64), 'authorizationUrl' => $this->authorizationUrl]; }
     public function callback(string $browser, array $parameters, array $audit): array { $this->record('callback', $parameters); return ['flowId' => str_repeat('f', 64)]; }
     public function backchannelLogout(string $logoutToken, array $audit): array { $this->record('backchannel-logout', compact('logoutToken', 'audit')); return $this->logoutVm; }
     public function completion(string $browser, string $flow): array { $this->record('completion', []); return $this->completionVm; }
@@ -76,6 +77,7 @@ if (!class_exists(Config::class, false)) {
     require __DIR__ . '/../plugin/src/Config.php';
     require __DIR__ . '/../plugin/src/Web.php';
 }
+if (defined('UCRM_OIDC_WEB_FIXTURES_ONLY')) { return; }
 $passed = 0;
 function check(bool $value, string $name): void { global $passed; if (!$value) { fwrite(STDERR, "FAIL: $name\n"); exit(1); } ++$passed; }
 function has(string $body, string $text): bool { return str_contains($body, $text); }
@@ -163,18 +165,31 @@ check($start['status'] === 200 && count($start['cookies']) === 1, 'GET start iss
 $cookie = $start['cookies'][0];
 check($cookie['name'] === '__Host-ucrm-oidc-browser' && $cookie['options']['path'] === '/' && !isset($cookie['options']['domain']) && $cookie['options']['secure'] && $cookie['options']['httponly'] && $cookie['options']['samesite'] === 'Lax', 'host-only correlation cookie prevents parent-domain shadowing');
 check(!has($start['body'], '<script>bad</script>') && has($start['body'], '&lt;script&gt;'), 'provider label escaped');
-check(has($start['headers']['Content-Security-Policy'], "form-action 'self' https://idp.example.test;") && !has($start['headers']['Content-Security-Policy'], " https:;"), 'start CSP only configured provider origins');
+check(has($start['headers']['Content-Security-Policy'], "form-action 'self';") && !has($start['headers']['Content-Security-Policy'], 'https://idp.example.test'), 'start form CSP stays same-origin');
 $second = $web->handle($server, ['action' => 'start'], [], $cookies);
 check($second['cookies'][0]['value'] === $browser, 'concurrent starts retain browser binding');
 $before = count($app->calls);
 check($web->handle($postServer, ['action' => 'start'], ['csrf' => 'invalid'], $cookies)['status'] === 403 && count($app->calls) === $before, 'CSRF prevents flow creation');
 $startCsrf = $app->csrf($browser, 'flow:start');
 $startPost = $web->handle($postServer, ['action' => 'start'], ['csrf' => $startCsrf, 'return' => '/nms/', 'fresh' => '1', 'preview' => '0'], $cookies);
-check($startPost['status'] === 303 && str_starts_with($startPost['headers']['Location'], 'https://idp.example.test/'), 'CSRF POST starts provider redirect');
+check($startPost['status'] === 200 && !isset($startPost['headers']['Location']) && has($startPost['body'], 'id="oidc-provider-continue"') && has($startPost['body'], 'href="https://idp.example.test/authorize?state=synthetic-state"'), 'CSRF POST completes same-origin document before validated provider navigation');
+check($startPost['headers']['Referrer-Policy'] === 'no-referrer' && $startPost['headers']['Cache-Control'] === 'no-store, max-age=0' && has($startPost['headers']['Content-Security-Policy'], "form-action 'self';"), 'transition suppresses referrer and caching without broadening CSP');
+check(has($startPost['body'], 'provider-transition.js') && has($startPost['body'], '<noscript>') && has($startPost['body'], 'If authentication is blocked'), 'transition includes automatic navigation, manual fallback and failure guidance');
 check(end($app->calls)[1]['fresh'] === true, 'fresh flag passed to core');
+$app->authorizationUrl = 'https://idp.example.test/authorize?state=x&nonce=y&code_challenge=z&code_challenge_method=S256';
+$parameters = $web->handle($postServer, ['action' => 'start'], ['csrf' => $startCsrf], $cookies);
+check(has($parameters['body'], 'state=x&amp;nonce=y&amp;code_challenge=z&amp;code_challenge_method=S256'), 'authorization parameters preserved and HTML escaped');
+foreach (['https://attacker.example.test/authorize', 'https://idp.example.test.attacker.test/authorize', 'javascript:alert(1)', '//idp.example.test/authorize', 'https://user:password@idp.example.test/authorize', 'https://idp.example.test/authorize#fragment'] as $invalidUrl) {
+    $app->authorizationUrl = $invalidUrl;
+    $deniedDestination = $web->handle($postServer, ['action' => 'start'], ['csrf' => $startCsrf], $cookies);
+    check($deniedDestination['status'] >= 400 && !has($deniedDestination['body'], 'id="oidc-provider-continue"') && !isset($deniedDestination['headers']['Location']), 'unapproved or unsafe provider destination denied');
+}
+$app->authorizationUrl = 'https://idp.example.test/authorize?state=synthetic-state';
 foreach (['//attacker.test/', '/crm/../logout', '/nms/%2f%2fattacker', '/crm/_plugins/anything', '/nms/api/v2/user', '/crm/login'] as $return) { check($web->handle($server, ['action' => 'start', 'return' => $return], [], $cookies)['status'] === 400, 'unsafe return rejected ' . $return); }
 $app->session->authorized = false;
 check($web->handle($server, ['action' => 'start', 'preview' => '1'], [], $cookies)['status'] === 403, 'preview start requires current admin');
+$before = count($app->calls);
+check($web->handle($postServer, ['action' => 'start'], ['csrf' => $startCsrf, 'preview' => '1'], $cookies)['status'] === 403 && count($app->calls) === $before, 'preview POST rechecks administrator before creating transition');
 $app->session->authorized = true;
 $callback = $web->handle($server, ['action' => 'callback', 'code' => 'PRIVATE_CODE', 'state' => 'STATE'], [], $cookies);
 check($callback['status'] === 303 && $callback['headers']['Location'] === Config::ENTRY . '?action=complete&flow=' . $flow, 'callback removes code and state from navigation');

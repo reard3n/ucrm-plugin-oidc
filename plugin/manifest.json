@@ -5,7 +5,7 @@
     "displayName": "OpenID Connect",
     "description": "Sign in to existing UISP and CRM staff accounts with OpenID Connect. Native permissions, MFA and session lifetimes are retained.",
     "url": "https://github.com/reard3n/ucrm-plugin-oidc",
-    "version": "0.3.2",
+    "version": "0.3.3",
     "unmsVersionCompliancy": {"min": "2.4.220", "max": "3.1.73"},
     "author": "Centre WISP"
   },

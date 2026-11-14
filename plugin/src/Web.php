@@ -179,22 +179,21 @@ final class Web
             $result = $this->app->start($browser, $return, $this->app->native()->audit($server), $context, $fresh);
             $url = $this->text($result['authorizationUrl'] ?? '', 8192);
             Config::url($url);
-            return $this->redirect($url);
+            $origin = Config::origin($url);
+            if (!in_array($origin, $this->app->authorizationOrigins(), true)) { throw new AppException('ENDPOINT_ORIGIN_DENIED', 403); }
+            // Complete the same-origin form navigation before leaving for the
+            // provider. A 303 here carries form-action into its federated redirects.
+            $restart = Config::ENTRY . '?' . http_build_query(['action' => 'start', 'return' => $return, 'preview' => $preview ? '1' : '0', 'fresh' => $fresh ? '1' : '0']);
+            $body = '<p id="oidc-provider-progress" role="status">Opening your identity provider. If the page does not open, choose Continue to provider below.</p><p><a id="oidc-provider-continue" rel="noreferrer" data-provider-origin="' . self::e($origin) . '" href="' . self::e($url) . '">Continue to provider</a></p><noscript><p>JavaScript is disabled. Use Continue to provider to open sign-in.</p></noscript><p>If authentication is blocked or cannot finish, <a href="' . self::e($restart) . '">start again</a> or use native password login. Contact your administrator if the problem continues.</p>' . $this->recovery()
+                . '<script defer src="' . self::ASSETS . 'provider-transition.js"></script>';
+            return $this->page('Continue to your identity provider', $body);
         }
         $csrf = $this->app->csrf($browser, 'flow:start');
         $label = $preview ? 'Preview provider identity' : $this->text($status['loginLabel'] ?? 'Sign in with OpenID Connect', 320);
         $body = '<p>' . ($preview ? 'Verify the provider identity and see the existing native account it matches. This preview does not sign in or change account links.' : 'Continue to your identity provider. Your existing native account and permissions will be used.') . '</p>';
         if ($fresh) { $body .= '<p>A fresh provider sign-in is required for this request.</p>'; }
         $body .= $this->form('start', $csrf, ['return' => $return, 'preview' => $preview ? '1' : '0', 'fresh' => $fresh ? '1' : '0'], '<button class="button button--primary" type="submit">' . self::e($label) . '</button>') . $this->recovery();
-        $response = $this->page($label, $body, 200, true);
-        // Chromium applies form-action to the provider redirect after our CSRF POST.
-        // Only the validated provider origins may receive the onward navigation.
-        $origins = $this->app->authorizationOrigins();
-        foreach ($origins as $providerOrigin) {
-            if (!is_string($providerOrigin) || Config::origin($providerOrigin) !== $providerOrigin) { throw new AppException('INVALID_HTTPS_URL'); }
-        }
-        $response['headers']['Content-Security-Policy'] = str_replace("form-action 'self';", "form-action 'self' " . implode(' ', $origins) . ';', $response['headers']['Content-Security-Policy']);
-        return $response;
+        return $this->page($label, $body, 200, true);
     }
 
     private function completion(string $action, array $server, array $query, array $post, array $cookies): array
