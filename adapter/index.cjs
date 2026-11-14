@@ -7,6 +7,7 @@ const path = require('node:path');
 const cluster = require('node:cluster');
 const { createProtocol, derive, MAX_FRAME_BYTES } = require('./protocol.cjs');
 const { createNativeHandler } = require('./native.cjs');
+const identity = require('./identity.cjs');
 const SOCKET_PATH = '/run/ucrm-oidc-adapter/native-session.sock';
 const KEY_PATH = '/run/secrets/ucrm-oidc-key';
 const CONFIG_PATH = '/opt/ucrm-oidc-adapter/config.json';
@@ -23,7 +24,7 @@ async function readRegular(file, maximum, secret = false) {
   try {
     const stat = await handle.stat();
     if (!stat.isFile() || stat.size < 1 || stat.size > maximum ||
-      (secret && ((stat.mode & 0o077) !== 0 || stat.uid !== process.getuid()))) throw new Error('Invalid adapter file');
+      (secret && !identity.matches(stat, identity.permissions(identity.read()).key, 'file'))) throw new Error('Invalid adapter file');
     const bytes = await handle.readFile();
     if (bytes.length > maximum) throw new Error('Oversized adapter file');
     return bytes;
@@ -48,8 +49,10 @@ async function removeStaleSocket(socketPath) {
   await fs.promises.unlink(socketPath);
 }
 async function listen(dispatch, discard) {
+  const runtime = identity.read(); identity.assertProcess(runtime);
+  const access = identity.permissions(runtime);
   const parent = await fs.promises.lstat(path.dirname(SOCKET_PATH));
-  if (!parent.isDirectory() || parent.isSymbolicLink() || parent.uid !== process.getuid() || (parent.mode & 0o077) !== 0) throw new Error('Unsafe socket parent');
+  if (!identity.matches(parent, access.socketDirectory, 'directory')) throw new Error('Unsafe socket parent');
   await removeStaleSocket(SOCKET_PATH);
   let active = 0;
   const connections = new Set();
@@ -88,7 +91,8 @@ async function listen(dispatch, discard) {
     await new Promise((resolve, reject) => { listener.once('error', reject); listener.listen(SOCKET_PATH, resolve); });
     inode = await fs.promises.lstat(SOCKET_PATH);
     listener.on('error', () => { void close(); console.error('UCRM OIDC adapter socket unavailable'); });
-    await fs.promises.chmod(SOCKET_PATH, 0o600);
+    await fs.promises.chmod(SOCKET_PATH, access.socket.mode);
+    if (!identity.matches(await fs.promises.lstat(SOCKET_PATH), access.socket, 'socket')) throw new Error('Unexpected socket permissions');
     listener.unref();
     return { close };
   } catch (error) { await close(); throw error; }
@@ -98,6 +102,8 @@ async function install(server, dependencies = {}) {
   if (env.UCRM_OIDC_ADAPTER_ENABLED !== '1' || cluster.isWorker) return { enabled: false, reason: 'DISABLED' };
   let listener;
   try {
+    const runtime = (dependencies.readIdentity || identity.read)();
+    (dependencies.assertProcessIdentity || identity.assertProcess)(runtime);
     const read = dependencies.readRegular || readRegular;
     const config = JSON.parse((await read(CONFIG_PATH, 16384)).toString('utf8'));
     const profile = PROFILES[config.profile];
