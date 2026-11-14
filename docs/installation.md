@@ -25,23 +25,85 @@ precreated staff accounts before deploying to your own installation.
 
 ## Provision once
 
-Both supported native application processes use UID/GID 1000:1000; verify this
-before provisioning. Use fresh resources and refuse nonempty destinations.
+Discover the existing API and CRM plugin-worker UID/GID independently. They can
+differ, even on the same supported native version. Never change native accounts
+or recursively change native data ownership to fit an adapter image.
+
+Run this read-only helper against the target deployment, using its actual Docker
+context and container names and a fresh local output path:
+
+```text
+python deployment/discover-runtime.py --docker-context CONTEXT --api-container API --crm-container CRM --output runtime-identity.json
+```
+
+It reads running API process identities, resolves the CRM `www-plugins` pool and
+checks active plugin workers when present. It records exact container/image/start
+identities and refuses ambiguous identities, root workers, changed owners or user
+namespace remapping. No native application, account or session is modified. Keep
+the receipt private and repeat discovery after a native runtime change.
+
+Initialize four **new, dedicated, empty** Linux directories named `key`, `socket`,
+`state` and `identity` beneath an operator-selected resource root. From a trusted
+Linux provisioning environment with root ownership privileges and the reviewed
+checkout available, run:
+
+```text
+node deployment/provision-runtime.cjs --initialize runtime-identity.json RESOURCE_ROOT
+```
+
+Only those dedicated resources are writable to the provisioning process. It
+generates a fresh random installation key internally, sets ownership from the
+discovered contract and refuses nonempty destinations. Do not use this initializer
+to migrate an existing installation or regenerate its key.
 
 | Resource | API access | CRM access | Fixed location and owner/mode |
 | --- | --- | --- | --- |
-| Installation key | Read-only | Read-only | `/run/secrets/ucrm-oidc-key`, owner 1000:1000, file 0400, parent 0500 or 0700 |
-| Dedicated socket | Read/write | Read-only | `/run/ucrm-oidc-adapter`, directory 0700, socket 0600, owner 1000:1000 |
-| Persistent private state | None | Read/write | `/var/lib/ucrm-oidc`, owner 1000:1000, directory 0700 |
+| Installation key | Read-only | Read-only | `/run/secrets/ucrm-oidc-key`; discovered API owner, modes below |
+| Dedicated socket | Read/write | Read-only | `/run/ucrm-oidc-adapter`; discovered API owner, modes below |
+| Persistent private state | None | Read/write | `/var/lib/ucrm-oidc`; discovered CRM UID/GID, directory 0700 |
 | Existing native CRM data | Read-only alias | Existing native mount | API alias `/opt/ucrm-oidc-crm-data` |
 | Static policy/public CAs | None | Read-only | `/etc/ucrm-oidc`, operator-owned |
+| Runtime identity contract | Read-only | None | `/etc/ucrm-oidc/runtime-identity.json`, root-owned 0444, parent 0555 |
 
-Generate a random 32-byte installation key as 64 lowercase hexadecimal characters
-plus a newline, outside image builds, command arguments and environment variables.
-Write it through stdin or a secret store; do not recursively change native data.
-The key mount must not hide unrelated existing secrets. Keep state and key across
-plugin removal and container replacement. CRM and API share the native UID, so
-other trusted native PHP code shares this trust boundary.
+When the UIDs match, the key uses the API UID/GID and mode 0400, its directory
+0500, the socket directory 0700 and socket 0600. When UIDs differ, the key and
+socket resources use the API UID and CRM GID: key 0440, key directory 0510,
+socket directory **02710** and socket 0660. The setgid directory makes recreated
+sockets inherit the CRM group; CRM can connect but cannot replace the socket.
+No supplementary native group membership is added. Other trusted processes with
+the same UID or authorized CRM group share this filesystem trust boundary.
+
+Keep the generated key out of image builds, command arguments, environment and
+logs. The key mount must not hide unrelated existing secrets. Keep state and key
+across plugin removal and container replacement. Mount the identity directory
+read-only into the API; CRM's separate network policy directory remains unchanged.
+Startup validates the exact resource permissions and actual API process identity;
+it does not silently repair ownership or fall back to a guessed UID.
+
+For Docker named volumes, set `volume.nocopy: true` on **every consumer of each
+prepared resource**, especially the initially empty socket and state volumes.
+Otherwise Docker can copy the image directory's root ownership onto an empty
+volume during container creation, invalidating the prepared permissions. For
+example, the API socket mount uses the Compose long form:
+
+```yaml
+volumes:
+  - type: volume
+    source: oidc-socket
+    target: /run/ucrm-oidc-adapter
+    volume:
+      nocopy: true
+```
+
+The CRM socket mount additionally uses `read_only: true`. Apply `nocopy` to the
+isolated provisioning container's mounts too. Verify permissions **after**
+container creation and prove the adapter status through CRM before enabling OIDC.
+
+For an existing installation, stop new OIDC admission and drain plugin work before
+an operator-reviewed resource migration. Preserve key bytes, encrypted state,
+bindings and pending logout records. Scope any ownership adjustment to the
+dedicated key/socket resources, retire only a proven stale owned socket, and
+verify native password access, OIDC issuance and cleanup after replacement.
 
 The adapter reads native activation at
 `/opt/ucrm-oidc-crm-data/ucrm/data/plugins/ucrm-oidc/data/config.json`.

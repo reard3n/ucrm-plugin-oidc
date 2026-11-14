@@ -104,9 +104,31 @@
     "releaseChannel": "prerelease-staging-qualified"
   },
   "nativeImageAcceptance": {
-    "publicImageBuildExecuted": false,
-    "runtimeSourceMatchesPreviouslyTestedBuildContexts": true,
-    "freshPublicImageAccepted": false
+    "publicImageBuildExecuted": true,
+    "freshPublicImageAccepted": true,
+    "sourceRevision": "85982c5505032a78381b0d46442e9008661fa145",
+    "qualifiedPluginArtifactUnchanged": true,
+    "nodeTestsPassed": 32,
+    "discoveryTestsPassed": 6,
+    "isolatedLinuxIdentityArrangementsPassed": 4,
+    "nativeProfilesPassed": 2,
+    "oidcLoginsAcrossBothPreparations": 12,
+    "nativePasswordControlsAcrossBothPreparations": 6,
+    "signedTargetLogoutPassedOnBothProfiles": true,
+    "splitIdentityApiReplacementPreservedLiveSessions": true,
+    "installationKeyAndSettingsPreserved": true,
+    "dockerSocketVolumeNoCopyRequired": true,
+    "initialVolumeCopyFailureAndCleanupPreserved": true,
+    "ownedNativeSessionsCleaned": 18,
+    "ownedProviderSessionsCleaned": 12,
+    "remainingPluginSessionRows": 0,
+    "remainingPluginSessionContextRows": 0,
+    "pendingLogoutWork": false,
+    "productionDeploymentPerformed": false,
+    "images": {
+      "uisp-2.4.220": "sha256:131137a851021c53aad52a6178c7ec1f1ee2caac3560e428e4ec8d08cdeccc69",
+      "uisp-3.1.73": "sha256:a6a1bca57bfb81eeb400354b0f8ffdd331e6c9a3e669ae60b8abf48aba9e9db3"
+    }
   },
   "finalCleanupAcceptance": {
     "ownedNativeSessionsCleaned": 15,

@@ -8,6 +8,16 @@ spec.loader.exec_module(discovery)
 
 
 class DiscoveryTests(unittest.TestCase):
+    def test_both_services_require_unmapped_native_ids(self):
+        good = {'uidMap': '0 0 4294967295', 'gidMap': '0 0 4294967295'}
+        discovery.validate_maps(good, good)
+        for field in ('uidMap', 'gidMap'):
+            for mapping in ('0 100000 65536', '', '0 0 4294967295\n1 1 1'):
+                bad = {**good, field: mapping}
+                for services in ((good, bad), (bad, good)):
+                    with self.assertRaises(ValueError):
+                        discovery.validate_maps(*services)
+
     def test_real_effective_and_saved_ids_must_match(self):
         with self.assertRaises(ValueError):
             discovery.identity({'processes': [{'uid': [1, 2, 1, 1], 'gid': [3]*4}]}, {'uid': 4, 'gid': 5})

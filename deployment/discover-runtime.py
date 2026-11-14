@@ -45,8 +45,16 @@ foreach(glob('/proc/[0-9]*/cmdline') as $path){
  if(array_unique(array_map('intval',array_slice($u,1)))!==[$uid]||array_unique(array_map('intval',array_slice($g,1)))!==[$gid])exit(6);
  $active++;
 }
-echo json_encode(['uid'=>$uid,'gid'=>$gid,'pool'=>'www-plugins','activeWorkersVerified'=>$active]);
+echo json_encode(['uid'=>$uid,'gid'=>$gid,'pool'=>'www-plugins','activeWorkersVerified'=>$active,
+ 'uidMap'=>trim(file_get_contents('/proc/self/uid_map')),'gidMap'=>trim(file_get_contents('/proc/self/gid_map'))]);
 '''
+
+
+def validate_maps(*services):
+    for service in services:
+        for key in ('uidMap', 'gidMap'):
+            if not re.fullmatch(r'0\s+0\s+4294967295', service.get(key, '')):
+                raise ValueError('User namespace mapping needs separate resource-ownership qualification')
 
 
 def identity(api, crm):
@@ -102,10 +110,8 @@ def main():
 
     before = {key: owner(name) for key, name in [('api', args.api_container), ('crm', args.crm_container)]}
     api = json.loads(run(['exec', '--user', '0:0', before['api']['id'], 'node', '-e', API_PROBE]))
-    for key in ('uidMap', 'gidMap'):
-        if not re.fullmatch(r'0\s+0\s+4294967295', api.get(key, '')):
-            raise ValueError('User namespace mapping needs separate resource-ownership qualification')
     crm = json.loads(run(['exec', '--user', '0:0', before['crm']['id'], 'php', '-d', 'display_errors=0', '-r', CRM_PROBE]))
+    validate_maps(api, crm)
     result = identity(api, crm)
     after = {key: owner(name) for key, name in [('api', args.api_container), ('crm', args.crm_container)]}
     if before != after:
