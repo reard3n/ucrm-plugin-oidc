@@ -6,9 +6,12 @@ required. The scripts accept an explicit Docker context; only local Unix sockets
 or Windows named pipes may run dependency containers. No runtime/native service
 is started by the source preparation commands.
 
-Obtain Composer from its official distribution and verify SHA256
+Obtain [Composer 2.11.2](https://getcomposer.org/download/2.11.2/composer.phar)
+from its official distribution and verify SHA256
 `dd158c0afd41d15fac89e1b4e47b5d42911fe316c3687cd5edac98319b25d028`.
-The scripts reject another PHAR. Do not run `composer update`: preserve every
+The [official download history](https://getcomposer.org/download/) lists this
+version and digest. Use that exact version rather than a moving latest download;
+the scripts reject another PHAR. Do not run `composer update`: preserve every
 locked package/version/reference. The pinned native CRM builder image is recorded
 in the packaging script; obtain it before a `--pull never` build. Its license and
 distribution terms remain separate from this source repository.

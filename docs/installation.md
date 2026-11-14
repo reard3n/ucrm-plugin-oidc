@@ -57,8 +57,11 @@ Create a read-only `/etc/ucrm-oidc/network-policy.json` with schema:
 Populate `trustedProxyAddresses` with the exact immediate native proxy addresses
 that overwrite `X-Real-IP`. Public HTTPS providers still require valid CA/hostname
 verification, validated addresses and no redirects. A private issuer needs an
-explicit `privateOrigins` entry with `origin`, approved `addresses`, and optional
-`caFile` naming an operator-supplied public CA in the same directory. Give only
+explicit `privateOrigins` entry with `origin`, approved `addresses`, and required
+`caFile` naming an existing, readable operator-supplied public CA PEM file in the
+same directory. The filename must end in `.pem` and contain only letters,
+digits, underscores and hyphens before that suffix. Omitting it makes the
+network policy unavailable; it does not select the system trust store. Give only
 CRM the required provider egress; do not expose the adapter on TCP.
 
 Before credentials or provider flows, use
