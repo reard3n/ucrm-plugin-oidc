@@ -1,0 +1,16 @@
+{
+  "version": "1",
+  "information": {
+    "name": "ucrm-oidc",
+    "displayName": "OpenID Connect",
+    "description": "Sign in to existing UISP and CRM staff accounts with OpenID Connect. Native permissions, MFA and session lifetimes are retained.",
+    "url": "https://github.com/reard3n/ucrm-plugin-oidc",
+    "version": "0.3.1",
+    "unmsVersionCompliancy": {"min": "2.4.220", "max": "3.1.73"},
+    "author": "Centre WISP"
+  },
+  "configuration": [
+    {"key": "oidcEnabled", "label": "Enable OpenID Connect login", "description": "Configure the identity provider and client secret in the provider settings below. Save login availability and the execution schedule separately. Native password login remains available.", "type": "checkbox", "required": false}
+  ],
+  "menu": [{"key": "System", "label": "OpenID Connect", "type": "admin", "target": "iframe"}]
+}

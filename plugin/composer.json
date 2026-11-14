@@ -1,0 +1,25 @@
+{
+  "name": "awacs/ucrm-oidc",
+  "description": "OIDC authentication using existing native UISP/CRM staff sessions",
+  "license": "proprietary",
+  "type": "project",
+  "require": {
+    "php": "^8.2",
+    "ext-curl": "*",
+    "ext-json": "*",
+    "ext-mbstring": "*",
+    "ext-openssl": "*",
+    "ext-pdo": "*",
+    "ext-pdo_sqlite": "*",
+    "ext-sodium": "*",
+    "facile-it/php-openid-client": "1.0.0",
+    "nyholm/psr7": "^1.8.2"
+  },
+  "provide": {"psr/http-client-implementation": "1.0"},
+  "autoload": {"classmap": ["src/"]},
+  "config": {
+    "platform": {"php": "8.2.35"},
+    "allow-plugins": false,
+    "sort-packages": true
+  }
+}

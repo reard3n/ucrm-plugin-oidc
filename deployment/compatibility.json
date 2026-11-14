@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "pluginVersion": "0.3.1",
+  "packagingAcceptance": "pending",
+  "profiles": {
+    "uisp-2.4.220-crm-4.4.33": {
+      "nmsVersion": "2.4.220",
+      "crmVersion": "4.4.33",
+      "nmsImage": "ubnt/unms@sha256:6f56dd81c99b7d028df5e757aaf82f009efe8c45f9c1deabd33494ccbc5af227",
+      "nativeBundle": "/home/app/unms/index.js",
+      "nativeBundleSha256": "162a5b9546661210827c3f49469e6cf88298007dd64b90d7fe0cd425be10f436",
+      "nativeCommand": [
+        "index.js"
+      ],
+      "phpVersion": "8.2.35",
+      "crmRuntime": "custom PHP 8.2 bridge; stock PHP 8.1 is unsupported",
+      "nativeSourceProfileQualified": true,
+      "publicArtifactAcceptance": false,
+      "futureVersionsAccepted": false
+    },
+    "uisp-3.1.73-crm-4.6.20": {
+      "nmsVersion": "3.1.73",
+      "crmVersion": "4.6.20",
+      "nmsImage": "ubnt/unms@sha256:50f6b2191e3dd4070ec1d9d55a269848fc0bb31180ab5c0f20610cb867d41f1f",
+      "nativeBundle": "/home/app/unms/api.js",
+      "nativeBundleSha256": "337b075359c7997e3401043c13ca3372da6827e9b8ba9e642b8baa7ba578ec41",
+      "nativeCommand": [
+        "api.sh"
+      ],
+      "phpVersion": "8.3.36",
+      "crmRuntime": "official native image",
+      "crmImage": "ubnt/unms-crm@sha256:23f9284acd80faf4d7f0afff871c5a2f1d1b2c492280a8fc1670679f0e3b3724",
+      "nativeSourceProfileQualified": true,
+      "publicArtifactAcceptance": false,
+      "futureVersionsAccepted": false
+    }
+  }
+}
