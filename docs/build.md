@@ -22,7 +22,7 @@ Use a fresh output directory outside the checkout. On Docker Desktop, pass
 `--docker-context desktop-linux`; otherwise use the explicit local context name.
 
 ```text
-python deployment/plugin-package.py prepare --revision HEAD --composer /path/to/composer.phar --docker-context default --output /path/to/new-build
+python deployment/plugin-package.py prepare --revision 54da2a5803d5221ec0ece349c721009072d5e136 --composer /path/to/composer.phar --docker-context default --output /path/to/new-build
 python deployment/plugin-package.py dependencies --build /path/to/new-build
 python deployment/plugin-package.py assemble --build /path/to/new-build --output /path/to/ucrm-oidc-0.3.1.zip --previous-receipt /path/to/installed-release.receipt.json
 ```
@@ -42,9 +42,14 @@ timestamps at two-second precision; `--previous-receipt` rejects nonadvancing
 release timestamps. Omit that argument only for a genuinely first installation.
 
 Keep source, dependency, file-hash and ZIP receipts. Build-time acceptance flags
-remain false until separate extracted-package/native update acceptance records
-qualify those exact bytes. Do not edit a frozen receipt to change its verdict.
-Do not install the currently unqualified public candidate.
+remain false in that immutable receipt. Separate extracted-package/native
+update acceptance records qualify those exact bytes; do not edit a frozen
+receipt to change its verdict.
+The [0.3.1 acceptance summary](compatibility.md#public-031-package) identifies the
+qualified ZIP built from commit `54da2a5803d5221ec0ece349c721009072d5e136`.
+Later documentation commits do not identify a rebuild of those same bytes;
+use the pinned revision above to reproduce the accepted package, and qualify
+any package built from another source revision separately.
 
 ## Native adapter image
 
@@ -63,4 +68,5 @@ The image keeps pristine/generated native bytes for guarded startup and recovery
 Unknown hashes fail closed. This repository supplies the patcher and adapter,
 not complete native bundles or redistributable vendor images. Qualify the built
 image with native password/MFA/permission and process-lifecycle checks before
-promotion. The public 0.3.1 image and ZIP acceptance remain pending.
+promotion. The 0.3.1 plugin ZIP passed its documented checks; a fresh native
+adapter image build from this public repository has not been executed or accepted.

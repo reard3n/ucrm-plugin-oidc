@@ -72,5 +72,9 @@ verified-email matching, protected denials, normal logout, signed back-channel
 logout, retry/fences, deferred native cleanup, provider outage and state/key
 preservation through native lifecycle. Use fresh synthetic accounts, preserve
 failed attempts, clean only owned sessions and inspect bounded logs without
-publishing raw credentials or vendor source. The public package's native update
-and release acceptance are still pending.
+publishing raw credentials or vendor source. The
+[0.3.1 public-package acceptance summary](compatibility.md#public-031-package)
+records the exact tested ZIP, 697 extracted-package assertions per PHP runtime,
+native updates and scoped provider smoke results. It preserves the latest
+browser-runner interruption and successful continuation. A fresh native adapter
+image build from this public repository remains a separate, unexecuted gate.

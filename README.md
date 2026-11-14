@@ -5,10 +5,14 @@ provider. UCRM supplies the configuration interface. The native applications
 continue to issue and validate sessions, enforce permissions and MFA, and own
 session expiration and local logout.
 
-Version **0.3.1 is a public packaging candidate**. Its package build and native
-installation acceptance are pending. Runtime implementation and dependency
-versions are unchanged from the preceding privately tested 0.3.0 candidate;
-this repository does not publish that environment's operational records.
+The **0.3.1 release candidate has passed package qualification, native frontend
+updates and scoped provider login/logout checks** on both listed profiles.
+Download the [staging-qualified v0.3.1 prerelease](https://github.com/reard3n/ucrm-plugin-oidc/releases/tag/v0.3.1).
+See the [acceptance summary](docs/compatibility.md#public-031-package) for the
+exact package hashes, completed checks and test limits. Runtime implementation and locked
+dependencies are unchanged from the preceding tested 0.3.0 candidate. Native
+adapter source matches the qualified integration, but a fresh public native-image
+build has not been executed. Operational records and credentials are not published.
 First-party source is available under the [MIT license](LICENSE), also included
 in the packaged plugin. Bundled dependencies retain their own license notices.
 

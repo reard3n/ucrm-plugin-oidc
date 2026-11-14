@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "pluginVersion": "0.3.1",
-  "packagingAcceptance": "pending",
+  "packagingAcceptance": "passed",
   "profiles": {
     "uisp-2.4.220-crm-4.4.33": {
       "nmsVersion": "2.4.220",
@@ -15,8 +15,25 @@
       "phpVersion": "8.2.35",
       "crmRuntime": "custom PHP 8.2 bridge; stock PHP 8.1 is unsupported",
       "nativeSourceProfileQualified": true,
-      "publicArtifactAcceptance": false,
-      "futureVersionsAccepted": false
+      "publicArtifactAcceptance": true,
+      "futureVersionsAccepted": false,
+      "publicPluginNativeUpdatePassed": true,
+      "nativeUpdateChecksPassed": 6,
+      "installedPluginFilesVerified": 996,
+      "nativeStateAndPeerPreservationPassed": true,
+      "publicProviderSmoke": "passed",
+      "publicProviderSmokeDetails": {
+        "freshOidcLogins": 6,
+        "nativePasswordControls": 3,
+        "fullPreparationPassed": true,
+        "interruptedPreparationPreserved": false,
+        "existingCheckpointContinuationPassed": false,
+        "signedTargetLogoutPassed": true,
+        "nonmatchingControlsPreserved": true,
+        "ownedNativeSessionsCleaned": 9,
+        "ownedProviderSessionsCleaned": 6,
+        "ownedProviderAdministratorCleanupPassed": true
+      }
     },
     "uisp-3.1.73-crm-4.6.20": {
       "nmsVersion": "3.1.73",
@@ -31,8 +48,88 @@
       "crmRuntime": "official native image",
       "crmImage": "ubnt/unms-crm@sha256:23f9284acd80faf4d7f0afff871c5a2f1d1b2c492280a8fc1670679f0e3b3724",
       "nativeSourceProfileQualified": true,
-      "publicArtifactAcceptance": false,
-      "futureVersionsAccepted": false
+      "publicArtifactAcceptance": true,
+      "futureVersionsAccepted": false,
+      "publicPluginNativeUpdatePassed": true,
+      "nativeUpdateChecksPassed": 6,
+      "installedPluginFilesVerified": 996,
+      "nativeStateAndPeerPreservationPassed": true,
+      "publicProviderSmoke": "passed",
+      "publicProviderSmokeDetails": {
+        "freshOidcLogins": 3,
+        "nativePasswordControls": 3,
+        "fullPreparationPassed": false,
+        "interruptedPreparationPreserved": true,
+        "existingCheckpointContinuationPassed": true,
+        "signedTargetLogoutPassed": true,
+        "nonmatchingControlsPreserved": true,
+        "ownedNativeSessionsCleaned": 6,
+        "ownedProviderSessionsCleaned": 3,
+        "ownedProviderAdministratorCleanupPassed": true
+      }
     }
+  },
+  "releaseAcceptance": "passed-for-listed-plugin-profiles",
+  "publicPluginArtifact": {
+    "version": "0.3.1",
+    "sourceRevision": "54da2a5803d5221ec0ece349c721009072d5e136",
+    "zipSha256": "fc5537f9863cfec8a1b00300fcf0723a7a3e436f1313579906d0e464c06a5269",
+    "buildReceiptSha256": "6c75b44ed4f457253fb4e1a53d9beff0693b6a562b5ebcea2932caa22af8205f",
+    "zipEntries": 996,
+    "composerValidatePassed": true,
+    "lockedDependencyInstallPassed": true,
+    "dependencyAuditPassed": true,
+    "extractedPackageQualification": [
+      {
+        "phpVersion": "8.2.35",
+        "phpFilesLinted": 884,
+        "classmapEntries": 842,
+        "pluginClassesLoaded": 9,
+        "behavioralSuites": 10,
+        "behavioralAssertions": 697,
+        "passed": true
+      },
+      {
+        "phpVersion": "8.3.36",
+        "phpFilesLinted": 884,
+        "classmapEntries": 842,
+        "pluginClassesLoaded": 9,
+        "behavioralSuites": 10,
+        "behavioralAssertions": 697,
+        "passed": true
+      }
+    ],
+    "releaseTag": "v0.3.1",
+    "releaseUrl": "https://github.com/reard3n/ucrm-plugin-oidc/releases/tag/v0.3.1",
+    "releaseChannel": "prerelease-staging-qualified"
+  },
+  "nativeImageAcceptance": {
+    "publicImageBuildExecuted": false,
+    "runtimeSourceMatchesPreviouslyTestedBuildContexts": true,
+    "freshPublicImageAccepted": false
+  },
+  "finalCleanupAcceptance": {
+    "ownedNativeSessionsCleaned": 15,
+    "ownedProviderSessionsCleaned": 9,
+    "ownedProviderLogoutDeliveriesAcknowledged": 9,
+    "allOwnedDeliveriesFirstAttempt": true,
+    "bothSchema2GuardsPassed": true,
+    "bothLegacyCleanupCompleteGuardsPassed": true,
+    "bothNoPendingLogoutGuardsPassed": true,
+    "remainingTestSessionRows": 0,
+    "remainingTestSessionContextRows": 0
+  },
+  "privacyAcceptance": {
+    "scansPassed": 2,
+    "knownSearchStringCounts": [
+      70,
+      44
+    ],
+    "bothNativeProfilesCovered": true,
+    "credentialMatches": 0,
+    "compactJwtPatternMatches": 0,
+    "scanLimitExceeded": false,
+    "exactLogoutJwtIncluded": false,
+    "scope": "Existing native log files and current CRM/API/proxy streams; bounded known-value and compact-JWT-pattern scans, not exhaustive encoding or historical-container coverage."
   }
 }

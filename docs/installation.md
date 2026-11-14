@@ -1,8 +1,10 @@
 # Operator installation and recovery
 
-This describes the required integration. The public 0.3.1 package has not yet
-completed release acceptance; do not treat this document as a deployment result.
-Use a separate staging environment with synthetic precreated staff accounts.
+This describes the required integration. The exact public 0.3.1 plugin ZIP
+passed the [listed staging acceptance](compatibility.md#public-031-package).
+It is not a production deployment result or qualification of a newly built
+native adapter image. Use a separate staging environment with synthetic
+precreated staff accounts before deploying to your own installation.
 
 ## Prepare the native owner
 
