@@ -1,2 +1,2 @@
 # Preserve the reviewed runtime bytes, including their original line endings.
-* -text
+* -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
