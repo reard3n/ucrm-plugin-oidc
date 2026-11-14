@@ -73,12 +73,14 @@ final class Application
             $native = ['enabled' => $status['enabled'], 'pluginEnabled' => $status['pluginEnabled'],
                 'nativeVersion' => $status['nativeVersion'], 'nativeConfigRevision' => $status['configRevision']];
         } catch (\Throwable) { $native = ['enabled' => false, 'pluginEnabled' => false, 'nativeVersion' => null, 'nativeConfigRevision' => null]; }
+        $configured = $row['config_json'] !== null && ($settings['clientAuthMethod'] === 'none' || $row['secret_enc'] !== null);
         return ['settings' => $settings, 'providerRevision' => (int) $row['provider_revision'],
             'credentialRevision' => (int) $row['credential_revision'], 'secretPresent' => $row['secret_enc'] !== null,
             'callbackUrl' => $row['config_json'] === null ? null : Config::callback($settings), 'native' => $native,
             'backchannelLogoutUrl' => $row['config_json'] === null ? null : Config::backchannelLogout($settings),
             'legacyCleanupPending' => $this->logout->legacyPending(),
-            'ready' => $native['enabled'] && !$this->logout->legacyPending() && $row['config_json'] !== null && ($settings['clientAuthMethod'] === 'none' || $row['secret_enc'] !== null)];
+            'providerConfigured' => $configured,
+            'ready' => $native['enabled'] && !$this->logout->legacyPending() && $configured];
     }
     public function csrf(string $binding, string $purpose): string
     {

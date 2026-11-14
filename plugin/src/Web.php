@@ -113,11 +113,13 @@ final class Web
                 'PROVIDER_UNAVAILABLE' => 'The identity provider could not be reached. Try again later or use native password login.',
                 'PROVIDER_LOGGED_OUT' => 'Your provider session was signed out. Start a new sign-in.',
                 'LEGACY_CLEANUP_PENDING' => 'An upgrade is finishing cleanup of earlier OpenID Connect sessions. Try again after cleanup completes or use native password login.',
-                'RECENT_AUTH_REQUIRED', 'FRESH_AUTH_REQUIRED', 'RECENT_AUTHENTICATION_REQUIRED' => 'Sign in again before changing these settings. A fresh native password login is also available.',
+                'OIDC_DISABLED' => 'New OpenID Connect sign-ins are disabled. Identity preview also requires this switch. An administrator can temporarily enable sign-in in the native plugin Settings page, run the protected preview, and disable sign-in again if rollout is not ready. Ordinary OIDC login is available during that window.',
+                'OIDC_NOT_READY' => 'OpenID Connect is not ready. Check the saved provider settings, required client secret and any pending cleanup on the plugin Settings page.',
+                'RECENT_AUTH_REQUIRED', 'FRESH_AUTH_REQUIRED', 'RECENT_AUTHENTICATION_REQUIRED' => 'Use the native account menu to sign out, then sign back in and reopen plugin settings. Opening the login page while already signed in does not refresh authentication. Save within five minutes of signing in.',
                 'ORIGIN_DENIED', 'CSRF_DENIED', 'CSRF_INVALID', 'INVALID_CSRF' => 'This request could not be verified. Reopen the page and try again.',
                 default => 'The request could not be completed. Reopen the page or use the native login to recover.',
             };
-            return $this->page('Request not completed', '<p role="alert">' . self::e($message) . '</p><p class="oidc-muted">Code: ' . self::e($code) . '</p>' . $this->recovery(), $status);
+            return $this->page('Request not completed', '<p role="alert">' . self::e($message) . '</p><p class="oidc-muted">Code: ' . self::e($code) . '</p>' . $this->recovery(in_array($code, ['RECENT_AUTH_REQUIRED', 'FRESH_AUTH_REQUIRED', 'RECENT_AUTHENTICATION_REQUIRED'], true)), $status);
         }
     }
 
@@ -169,6 +171,9 @@ final class Web
         $fresh = $this->flag($input['fresh'] ?? '0');
         $context = $preview ? $this->app->native()->adminContext($cookies, $server) : null;
         $browser = $this->browser($cookies, $method === 'GET');
+        $status = $this->app->status();
+        if (($status['enabled'] ?? false) !== true) { throw new AppException('OIDC_DISABLED', 403); }
+        if (($status['ready'] ?? false) !== true) { throw new AppException('OIDC_NOT_READY', 503); }
         if ($method === 'POST') {
             $this->app->checkCsrf($browser, 'flow:start', $this->text($post['csrf'] ?? '', 256));
             $result = $this->app->start($browser, $return, $this->app->native()->audit($server), $context, $fresh);
@@ -176,8 +181,6 @@ final class Web
             Config::url($url);
             return $this->redirect($url);
         }
-        $status = $this->app->status();
-        if (($status['enabled'] ?? false) !== true || ($status['ready'] ?? false) !== true) { throw new AppException('OIDC_NOT_READY', 503); }
         $csrf = $this->app->csrf($browser, 'flow:start');
         $label = $preview ? 'Preview provider identity' : $this->text($status['loginLabel'] ?? 'Sign in with OpenID Connect', 320);
         $body = '<p>' . ($preview ? 'Verify the provider identity and see the existing native account it matches. This preview does not sign in or change account links.' : 'Continue to your identity provider. Your existing native account and permissions will be used.') . '</p>';
@@ -256,7 +259,23 @@ final class Web
         if ($method === 'POST') {
             $this->app->checkCsrf($context['sessionId'], 'admin', $this->text($post['csrf'] ?? '', 256));
             unset($post['csrf']);
-            if (in_array($action, ['settings', 'secret-replace', 'secret-clear', 'unlink', 'relink'], true)) { $this->app->assertFresh($context); }
+            if (in_array($action, ['settings', 'secret-replace', 'secret-clear', 'unlink', 'relink'], true)) {
+                try { $this->app->assertFresh($context); }
+                catch (AppException $error) {
+                    if ($error->safeCode !== 'RECENT_AUTH_REQUIRED') { throw $error; }
+                    $vm = $this->app->configuration($context);
+                    // Retain only declared, non-secret provider fields after authenticated
+                    // Origin/CSRF checks. Credentials and account-link operations are never replayed.
+                    if ($action === 'settings') {
+                        foreach (Config::DEFAULTS as $key => $_) {
+                            if (isset($post[$key])) { $vm['settings'][$key] = $key === 'endpointOrigins' ? explode("\n", str_replace("\r", '', $post[$key])) : $post[$key]; }
+                        }
+                        if (isset($post['expectedProviderRevision'])) { $vm['providerRevision'] = $this->integer($post['expectedProviderRevision']); }
+                    }
+                    $body = $this->navigation() . '<section class="oidc-card"><h2>Fresh native sign-in required</h2><p role="alert">Sign out using the native account menu, then sign back in with your native credentials. Opening the login page while already signed in does not refresh authentication. No session is signed out automatically.</p><ol><li><a href="/nms/" target="_blank" rel="noopener noreferrer">Open the native account menu in a new tab</a>, choose Sign Out, then sign in again.</li><li>Return to this tab and <a href="' . Config::ENTRY . '">reload provider settings</a>.</li><li>Review and save within five minutes. Re-enter any client secret; secrets are never retained.</li></ol><p>Unsaved provider fields are shown below. When browser storage is available, this tab retains only those non-secret fields for 15 minutes and restores them after reload for the same administrator and unchanged settings revision.</p><p class="oidc-muted">Code: RECENT_AUTH_REQUIRED</p></section>';
+                    return $this->page('Sign in again', $body . $this->settings($vm, $csrf, $context, $action === 'settings' ? 'recovery' : 'editing'), 403, true);
+                }
+            }
             switch ($action) {
                 case 'settings':
                     Config::keys($post, array_merge(array_keys(Config::DEFAULTS), ['expectedProviderRevision']));
@@ -276,7 +295,7 @@ final class Web
                 case 'test':
                     Config::keys($post, []);
                     $this->app->connectionTest($context);
-                    $notice = 'Provider discovery and connection checks passed. Use identity preview to verify the complete login flow.';
+                    $notice = 'Provider discovery and connection checks passed. This does not verify client credentials, account matching, native session issuance or logout. Identity preview checks provider authentication and account matching separately.';
                     break;
                 case 'setup':
                     Config::keys($post, []);
@@ -307,14 +326,17 @@ final class Web
             $pagination = ['page' => $this->integer($query['page'] ?? '1', 1), 'search' => $this->text($query['search'] ?? '', 128)];
             return $this->page($action === 'bindings' ? 'Account links' : 'Authentication audit', $this->navigation() . $this->records($action, $this->app->records($context, $action, $pagination), $csrf, $pagination), 200, true);
         }
-        return $this->page('OpenID Connect', $this->navigation() . ($notice === '' ? '' : '<p class="oidc-notice" role="status">' . self::e($notice) . '</p>') . $extra . $this->settings($this->app->configuration($context), $csrf), 200, true);
+        $vm = $this->app->configuration($context);
+        $vm['discoveryTestPassed'] = $method === 'POST' && $action === 'test';
+        return $this->page('OpenID Connect', $this->navigation() . ($notice === '' ? '' : '<p class="oidc-notice" role="status">' . self::e($notice) . '</p>') . $extra . $this->settings($vm, $csrf, $context, $action === 'settings' ? 'saved' : 'editing'), 200, true);
     }
 
-    private function settings(array $vm, string $csrf): string
+    private function settings(array $vm, string $csrf, array $context, string $draftState): string
     {
         $settings = array_replace(Config::DEFAULTS, $vm['settings']);
         $native = $vm['native'];
-        $body = '<section class="oidc-card"><h2>Readiness</h2><dl class="oidc-details"><dt>Native plugin</dt><dd>' . (($native['pluginEnabled'] ?? false) ? 'Enabled' : 'Disabled') . '</dd><dt>OpenID Connect login</dt><dd>' . (($native['enabled'] ?? false) ? 'Enabled' : 'Disabled') . '</dd><dt>Provider configuration</dt><dd>' . (($vm['ready'] ?? false) ? 'Ready' : 'Needs setup') . '</dd></dl>';
+        $body = '<section class="oidc-card"><h2>Readiness</h2><dl class="oidc-details"><dt>Native plugin</dt><dd>' . (($native['pluginEnabled'] ?? false) ? 'Enabled' : 'Disabled') . '</dd><dt>OpenID Connect login</dt><dd>' . (($native['enabled'] ?? false) ? 'Enabled' : 'Disabled') . '</dd><dt>Provider configuration</dt><dd>' . (($vm['providerConfigured'] ?? false) ? 'Configured' : 'Needs setup') . '</dd></dl><p>Configured means the provider settings and any required secret are saved. Test provider connection checks discovery separately; it does not prove credentials, account matching, native login or logout. Login availability and pending cleanup are separate from configuration completeness.</p>';
+        $body .= '<p>Discovery check: ' . (($vm['discoveryTestPassed'] ?? false) ? 'Passed in this request.' : 'Not checked in this page view. Use Test provider connection; earlier results are available in Audit.') . '</p>';
         if (($vm['legacyCleanupPending'] ?? false) === true) {
             $body .= '<p class="oidc-notice" role="status">An upgrade is finishing cleanup of sessions created by an earlier plugin version. New OpenID Connect sign-ins resume after cleanup completes. Native password login remains available.</p>';
         }
@@ -332,9 +354,10 @@ final class Web
         $fields .= $this->select('emailSource', 'Verified email source', $settings['emailSource'], ['userinfo' => 'UserInfo endpoint', 'id_token' => 'ID token']);
         $fields .= $this->field('maxAge', 'Maximum provider authentication age in seconds (blank: provider default)', $settings['maxAge'] === null ? '' : (string) $settings['maxAge'], 'number');
         $fields .= '<label for="oidc-endpointOrigins">Additional provider endpoint origins, one HTTPS origin per line</label><textarea id="oidc-endpointOrigins" name="endpointOrigins" rows="3" maxlength="8192">' . self::e(implode("\n", $settings['endpointOrigins'])) . '</textarea><p class="oidc-muted">Only add origins required by your provider. The issuer origin is allowed automatically.</p><button class="button button--primary" type="submit">Save provider settings</button>';
-        $body .= '<section class="oidc-card"><h2>Provider settings</h2><p>Changing trust settings, credentials or account links requires a recent sign-in. Changing the issuer, client ID or client authentication method clears the saved client secret; save the replacement secret afterwards.</p>' . $this->form('settings', $csrf, ['expectedProviderRevision' => (string) $vm['providerRevision']], $fields) . '</section>';
+        $draftAttributes = 'data-oidc-provider-settings data-draft-owner="' . hash('sha256', 'provider-draft:' . $context['nativeUserId']) . '" data-draft-state="' . $draftState . '"';
+        $body .= '<section class="oidc-card"><h2>Provider settings</h2><p>Changing trust settings, credentials or account links requires a sign-in within the last five minutes. If necessary, sign out and back in through the native account menu. Changing the issuer, client ID or client authentication method clears the saved client secret; save the replacement secret afterwards.</p>' . $this->form('settings', $csrf, ['expectedProviderRevision' => (string) $vm['providerRevision']], $fields, $draftAttributes) . '</section>';
         $body .= '<section class="oidc-card"><h2>Client secret</h2><p>' . (($vm['secretPresent'] ?? false) ? 'A client secret is saved. Its value is never displayed.' : 'No client secret is saved.') . '</p>' . $this->form('secret-replace', $csrf, ['expectedCredentialRevision' => (string) $vm['credentialRevision']], '<label for="oidc-clientSecret">New client secret (blank keeps the saved value)</label><input id="oidc-clientSecret" name="clientSecret" type="password" autocomplete="new-password" maxlength="4096" value=""><button class="button button--primary" type="submit">Save client secret</button>') . $this->form('secret-clear', $csrf, ['expectedCredentialRevision' => (string) $vm['credentialRevision']], '<button class="button" type="submit">Clear saved client secret</button>', 'data-confirm="Clear the saved client secret? Existing native sessions keep their native lifetime."') . '</section>';
-        return $body . '<section class="oidc-card"><h2>Test and recovery</h2>' . $this->form('test', $csrf, [], '<button class="button" type="submit">Test provider connection</button>') . '<p><a target="_top" href="' . Config::ENTRY . '?action=start&amp;preview=1">Preview verified identity and native account match</a></p><p><a target="_top" href="' . Config::ENTRY . '?action=start&amp;fresh=1">Sign in again with fresh provider authentication</a></p><p><a target="_top" href="/nms/login">Open native password login</a></p></section>';
+        return $body . '<section class="oidc-card"><h2>Test and recovery</h2>' . $this->form('test', $csrf, [], '<button class="button" type="submit">Test provider connection</button>') . '<p>Discovery can be tested with new sign-ins disabled. Identity preview requires temporarily enabling OpenID Connect login in native plugin Settings. Ordinary OIDC login is available during this window. Run the administrator-only preview, then disable sign-in again if rollout is not ready. The provider may also deny access independently.</p><p><a target="_top" href="' . Config::ENTRY . '?action=start&amp;preview=1">Preview verified identity and native account match</a></p><p><a target="_top" href="' . Config::ENTRY . '?action=start&amp;fresh=1">Sign in again with fresh provider authentication</a></p><p>For a fresh native password login, first sign out using the native account menu, then sign back in and return to plugin Settings.</p><p><a target="_blank" rel="noopener noreferrer" href="/nms/">Open native account menu</a></p></section>';
     }
 
     private function records(string $kind, array $vm, string $csrf, array $query): string
@@ -348,7 +371,8 @@ final class Web
                 $body .= $this->form('lookup', $csrf, $hidden, '<label>Relink to an existing native account by email<input name="email" type="email" maxlength="320" required></label><button class="button" type="submit">Look up account</button>') . '</li>';
             } else {
                 $body .= '<li class="oidc-card"><h2>' . self::e((string) $item['event']) . '</h2><dl class="oidc-details">';
-                foreach (['at' => 'Time', 'outcome' => 'Outcome', 'actor' => 'Actor reference', 'object' => 'Object reference'] as $key => $label) { $body .= '<dt>' . $label . '</dt><dd>' . self::e((string) ($item[$key] ?? '—')) . '</dd>'; }
+                $body .= '<dt>Time (UTC)</dt><dd>' . $this->auditTime($item['at'] ?? null) . '</dd>';
+                foreach (['outcome' => 'Outcome', 'actor' => 'Actor reference', 'object' => 'Object reference'] as $key => $label) { $body .= '<dt>' . $label . '</dt><dd>' . self::e((string) ($item[$key] ?? '—')) . '</dd>'; }
                 $body .= '</dl></li>';
             }
         }
@@ -363,6 +387,14 @@ final class Web
         return $body . '</nav>';
     }
 
+    private function auditTime(mixed $value): string
+    {
+        if (!is_int($value) && !(is_string($value) && preg_match('/\A(?:0|[1-9][0-9]{0,11})\z/D', $value))) { return 'Unknown'; }
+        $epoch = (int) $value;
+        if ($epoch < 0 || $epoch > 253402300799) { return 'Unknown'; }
+        return '<time datetime="' . gmdate('Y-m-d\TH:i:s\Z', $epoch) . '" title="Unix timestamp: ' . $epoch . '">' . gmdate('Y-m-d H:i:s', $epoch) . ' UTC</time>';
+    }
+
     private function browser(array $cookies, bool $create): string
     {
         $value = $cookies[self::BROWSER_COOKIE] ?? null;
@@ -374,7 +406,7 @@ final class Web
         return $value;
     }
     private function navigation(): string { return '<nav class="oidc-nav" aria-label="OpenID Connect"><a href="' . Config::ENTRY . '">Settings</a><a href="' . Config::ENTRY . '?action=bindings">Account links</a><a href="' . Config::ENTRY . '?action=audit">Audit</a></nav>'; }
-    private function recovery(): string { return '<p class="oidc-recovery"><a target="_top" href="/nms/login">Native password login</a> · <a href="' . Config::ENTRY . '">Plugin settings</a></p>'; }
+    private function recovery(bool $fresh = false): string { return '<p class="oidc-recovery">' . ($fresh ? '<a target="_blank" rel="noopener noreferrer" href="/nms/">Native account menu</a>' : '<a target="_top" href="/nms/login">Native password login</a>') . ' · <a href="' . Config::ENTRY . '">Plugin settings</a></p>'; }
     private function field(string $name, string $label, string $value, string $type = 'text'): string { return '<label for="oidc-' . $name . '">' . self::e($label) . '</label><input id="oidc-' . $name . '" name="' . $name . '" type="' . $type . '" maxlength="2048" value="' . self::e($value) . '">'; }
     private function select(string $name, string $label, string $value, array $options): string
     {
@@ -426,11 +458,11 @@ final class Web
     private function page(string $title, string $body, int $status = 200, bool $nativeForm = false): array
     {
         // Navigation form POSTs serialize Origin:null under no-referrer. These
-        // clean, successful form pages need same-origin for exact Origin+CSRF
+        // clean form pages (including authenticated recent-auth recovery) need same-origin for exact Origin+CSRF
         // validation; cross-origin provider navigations still get no Referer.
-        // Callback/start redirects, completion, JSON, and errors keep no-referrer.
+        // Callback/start redirects, completion, JSON, and other errors keep no-referrer.
         $headers = ['Content-Type' => 'text/html; charset=UTF-8'];
-        if ($nativeForm && $status === 200) { $headers['Referrer-Policy'] = 'same-origin'; }
-        return $this->response($status, $headers, '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' . self::e($title) . '</title><link rel="stylesheet" href="/crm/dist/main.min.css"><link rel="stylesheet" href="' . self::ASSETS . 'web.css"><script defer src="' . self::ASSETS . 'web.js"></script></head><body class="oidc-page"><main class="oidc-container"><h1>' . self::e($title) . '</h1>' . $body . '</main></body></html>');
+        if ($nativeForm && in_array($status, [200, 403], true)) { $headers['Referrer-Policy'] = 'same-origin'; }
+        return $this->response($status, $headers, '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' . self::e($title) . '</title><link rel="stylesheet" href="/crm/dist/main.min.css"><link rel="stylesheet" href="' . self::ASSETS . 'web.css"><script defer src="' . self::ASSETS . 'web.js"></script>' . ($nativeForm ? '<script defer src="' . self::ASSETS . 'settings-draft.js"></script>' : '') . '</head><body class="oidc-page"><main class="oidc-container"><h1>' . self::e($title) . '</h1>' . $body . '</main></body></html>');
     }
 }
