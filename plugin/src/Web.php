@@ -20,6 +20,7 @@ final class Web
         'PROVIDER_LOGGED_OUT', 'LEGACY_CLEANUP_PENDING',
     ];
     private array $responseCookies = [];
+    private bool $loginPage = false;
 
     public function __construct(private readonly Application $app, private readonly int $pluginId = 0) {}
 
@@ -28,6 +29,7 @@ final class Web
     {
         $this->responseCookies = [];
         $action = is_string($query['action'] ?? null) ? $query['action'] : 'admin';
+        $this->loginPage = in_array($action, ['start', 'callback', 'complete', 'error'], true);
         try {
             $this->bounded($query, 16, 8192);
             $this->uniqueQuery($server);
@@ -109,7 +111,8 @@ final class Web
                 'VERIFIED_EMAIL_REQUIRED' => 'Your identity provider must supply a verified email address that matches your existing native staff account. Contact your administrator.',
                 'BINDING_CONFLICT' => 'This identity or native account already has a different account link. Ask an administrator to review the link.',
                 'IDENTITY_UNLINKED' => 'This external account link has been disabled. Contact your administrator or use native password login.',
-                'FLOW_EXPIRED', 'CONFIG_CHANGED', 'FLOW_CONFIGURATION_CHANGED', 'BINDING_CHANGED' => 'This sign-in expired or its configuration changed. Start a new sign-in.',
+                'FLOW_EXPIRED', 'FLOW_INVALID', 'FLOW_USED', 'INVALID_FLOW' => 'This sign-in link has expired or has already been used. Start sign-in again.',
+                'CONFIG_CHANGED', 'FLOW_CONFIGURATION_CHANGED', 'BINDING_CHANGED' => 'This sign-in configuration changed. Start sign-in again.',
                 'PROVIDER_UNAVAILABLE' => 'The identity provider could not be reached. Try again later or use native password login.',
                 'PROVIDER_LOGGED_OUT' => 'Your provider session was signed out. Start a new sign-in.',
                 'LEGACY_CLEANUP_PENDING' => 'An upgrade is finishing cleanup of earlier OpenID Connect sessions. Try again after cleanup completes or use native password login.',
@@ -119,7 +122,10 @@ final class Web
                 'ORIGIN_DENIED', 'CSRF_DENIED', 'CSRF_INVALID', 'INVALID_CSRF' => 'This request could not be verified. Reopen the page and try again.',
                 default => 'The request could not be completed. Reopen the page or use the native login to recover.',
             };
-            return $this->page('Request not completed', '<p role="alert">' . self::e($message) . '</p><p class="oidc-muted">Code: ' . self::e($code) . '</p>' . $this->recovery(in_array($code, ['RECENT_AUTH_REQUIRED', 'FRESH_AUTH_REQUIRED', 'RECENT_AUTHENTICATION_REQUIRED'], true)), $status);
+            $recovery = in_array($action, ['start', 'complete', 'error'], true)
+                ? $this->loginRecovery()
+                : $this->recovery(in_array($code, ['RECENT_AUTH_REQUIRED', 'FRESH_AUTH_REQUIRED', 'RECENT_AUTHENTICATION_REQUIRED'], true));
+            return $this->page($this->loginPage ? 'Unable to sign in' : 'Request not completed', '<p role="alert">' . self::e($message) . '</p><p class="oidc-muted">Code: ' . self::e($code) . '</p>' . $recovery, $status);
         }
     }
 
@@ -184,15 +190,16 @@ final class Web
             // Complete the same-origin form navigation before leaving for the
             // provider. A 303 here carries form-action into its federated redirects.
             $restart = Config::ENTRY . '?' . http_build_query(['action' => 'start', 'return' => $return, 'preview' => $preview ? '1' : '0', 'fresh' => $fresh ? '1' : '0']);
-            $body = '<p id="oidc-provider-progress" role="status">Opening your identity provider. If the page does not open, choose Continue to provider below.</p><p><a id="oidc-provider-continue" rel="noreferrer" data-provider-origin="' . self::e($origin) . '" href="' . self::e($url) . '">Continue to provider</a></p><noscript><p>JavaScript is disabled. Use Continue to provider to open sign-in.</p></noscript><p>If authentication is blocked or cannot finish, <a href="' . self::e($restart) . '">start again</a> or use native password login. Contact your administrator if the problem continues.</p>' . $this->recovery()
+            $body = '<p id="oidc-provider-progress" role="status">Opening your identity provider...</p><div id="oidc-provider-recovery" hidden><p><a id="oidc-provider-continue" rel="noreferrer" data-provider-origin="' . self::e($origin) . '" href="' . self::e($url) . '">Continue to provider</a></p>' . $this->loginRecovery($restart) . '</div>' . $this->noScriptRecovery()
                 . '<script defer src="' . self::ASSETS . 'provider-transition.js"></script>';
             return $this->page('Continue to your identity provider', $body);
         }
         $csrf = $this->app->csrf($browser, 'flow:start');
         $label = $preview ? 'Preview provider identity' : $this->text($status['loginLabel'] ?? 'Sign in with OpenID Connect', 320);
-        $body = '<p>' . ($preview ? 'Verify the provider identity and see the existing native account it matches. This preview does not sign in or change account links.' : 'Continue to your identity provider. Your existing native account and permissions will be used.') . '</p>';
+        $body = '<p id="oidc-start-progress" role="status">' . ($preview ? 'Opening the provider identity preview. This preview does not sign in or change account links.' : 'Starting sign-in...') . '</p>';
         if ($fresh) { $body .= '<p>A fresh provider sign-in is required for this request.</p>'; }
-        $body .= $this->form('start', $csrf, ['return' => $return, 'preview' => $preview ? '1' : '0', 'fresh' => $fresh ? '1' : '0'], '<button class="button button--primary" type="submit">' . self::e($label) . '</button>') . $this->recovery();
+        $body .= $this->form('start', $csrf, ['return' => $return, 'preview' => $preview ? '1' : '0', 'fresh' => $fresh ? '1' : '0'], '', 'id="oidc-start" hidden')
+            . '<div id="oidc-login-recovery" hidden>' . $this->loginRecovery() . '</div>' . $this->noScriptRecovery();
         return $this->page($label, $body, 200, true);
     }
 
@@ -215,14 +222,15 @@ final class Web
                     $rows .= '<dt>' . self::e($label) . '</dt><dd>' . self::e(is_string($preview[$key] ?? null) ? $preview[$key] : '—') . '</dd>';
                 }
                 $rows .= '<dt>Email verified</dt><dd>' . (($preview['emailVerified'] ?? false) === true ? 'Yes' : 'No') . '</dd><dt>Existing link</dt><dd>' . (($preview['alreadyLinked'] ?? false) === true ? 'Yes' : 'No') . '</dd>';
+                $this->loginPage = false;
                 return $this->page('Provider identity preview', '<dl class="oidc-details">' . $rows . '</dl><p>Existing native permissions are retained.</p><p>No login session or new account link was created.</p>' . $this->recovery());
             }
             if (!in_array($vm['kind'] ?? null, ['session', 'mfa'], true)) { throw new AppException('INVALID_FLOW'); }
             $csrf = $this->app->csrf($browser, 'flow:' . $flow);
             $isMfa = $vm['kind'] === 'mfa';
-            $handoff = $this->form('handoff', $csrf, ['flow' => $flow], '<button class="button button--primary" type="submit">Continue signing in</button>', 'id="oidc-handoff"' . ($isMfa ? ' hidden' : ''));
+            $handoff = $this->form('handoff', $csrf, ['flow' => $flow], '', 'id="oidc-handoff" hidden data-auto-handoff="' . ($isMfa ? '0' : '1') . '"');
             $mfa = $this->form('mfa-complete', $csrf, ['flow' => $flow], '<label for="oidc-otp">Native authenticator code</label><input id="oidc-otp" name="otp" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" required><button class="button button--primary" type="submit">Verify and sign in</button>', 'id="oidc-mfa"' . ($isMfa ? '' : ' hidden'));
-            return $this->page('Complete sign-in', '<p>Your provider identity has been verified. Continue with your existing native account.</p><div id="oidc-signin">' . $handoff . $mfa . '<p id="oidc-progress" role="status" aria-live="polite"></p></div>' . $this->recovery());
+            return $this->page('Completing sign-in', '<p>Your provider identity has been verified.</p><div id="oidc-signin">' . $handoff . $mfa . '<p id="oidc-progress" role="status" aria-live="polite">' . ($isMfa ? 'Enter the code from your native account authenticator.' : 'Completing sign-in...') . '</p></div><div id="oidc-login-recovery" hidden>' . $this->loginRecovery() . '</div>' . $this->noScriptRecovery());
         }
         $this->app->checkCsrf($browser, 'flow:' . $flow, $this->text($post['csrf'] ?? '', 256));
         $audit = $this->app->native()->audit($server);
@@ -406,6 +414,8 @@ final class Web
     }
     private function navigation(): string { return '<nav class="oidc-nav" aria-label="OpenID Connect"><a href="' . Config::ENTRY . '">Settings</a><a href="' . Config::ENTRY . '?action=bindings">Account links</a><a href="' . Config::ENTRY . '?action=audit">Audit</a></nav>'; }
     private function recovery(bool $fresh = false): string { return '<p class="oidc-recovery">' . ($fresh ? '<a target="_blank" rel="noopener noreferrer" href="/nms/">Native account menu</a>' : '<a target="_top" href="/nms/login">Native password login</a>') . ' · <a href="' . Config::ENTRY . '">Plugin settings</a></p>'; }
+    private function loginRecovery(?string $restart = null): string { return '<p class="oidc-recovery"><a href="' . self::e($restart ?? Config::ENTRY . '?action=start') . '">Start sign-in again</a> · <a target="_top" href="/nms/login">Native password login</a></p>'; }
+    private function noScriptRecovery(): string { return '<noscript><p role="alert">Automatic sign-in cannot run because JavaScript is disabled. Enable JavaScript and reload, or use native password login.</p><p><a target="_top" href="/nms/login">Native password login</a></p></noscript>'; }
     private function field(string $name, string $label, string $value, string $type = 'text'): string { return '<label for="oidc-' . $name . '">' . self::e($label) . '</label><input id="oidc-' . $name . '" name="' . $name . '" type="' . $type . '" maxlength="2048" value="' . self::e($value) . '">'; }
     private function select(string $name, string $label, string $value, array $options): string
     {
@@ -462,6 +472,11 @@ final class Web
         // Callback/start redirects, completion, JSON, and other errors keep no-referrer.
         $headers = ['Content-Type' => 'text/html; charset=UTF-8'];
         if ($nativeForm && in_array($status, [200, 403], true)) { $headers['Referrer-Policy'] = 'same-origin'; }
-        return $this->response($status, $headers, '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' . self::e($title) . '</title><link rel="stylesheet" href="/crm/dist/main.min.css"><link rel="stylesheet" href="' . self::ASSETS . 'web.css"><script defer src="' . self::ASSETS . 'web.js"></script>' . ($nativeForm ? '<script defer src="' . self::ASSETS . 'settings-draft.js"></script>' : '') . '</head><body class="oidc-page"><main class="oidc-container"><h1>' . self::e($title) . '</h1>' . $body . '</main></body></html>');
+        $content = '<h1>' . self::e($title) . '</h1>' . $body;
+        if ($this->loginPage) {
+            $content = '<div class="oidc-brand" aria-label="UISP">UISP</div><section class="oidc-login-content">' . $content . '</section><p class="oidc-login-footer">OpenID Connect</p>';
+        }
+        $art = $this->loginPage ? '<aside class="oidc-login-art" aria-hidden="true"><span>Photo by fabiensf at Brussels, Belgium</span></aside>' : '';
+        return $this->response($status, $headers, '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' . self::e($title) . '</title><link rel="stylesheet" href="/crm/dist/main.min.css"><link rel="stylesheet" href="/nms/fonts.min.css"><link rel="stylesheet" href="' . self::ASSETS . 'web.css"><script defer src="' . self::ASSETS . 'web.js"></script>' . ($nativeForm ? '<script defer src="' . self::ASSETS . 'settings-draft.js"></script>' : '') . '</head><body class="oidc-page' . ($this->loginPage ? ' oidc-login' : '') . '"><main class="oidc-container">' . $content . '</main>' . $art . '</body></html>');
     }
 }

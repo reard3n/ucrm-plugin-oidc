@@ -1,24 +1,47 @@
-.oidc-page { margin: 0; background: #f5f6f7; color: #263238; font: 15px/1.55 Arial, sans-serif; }
-.oidc-container { max-width: 960px; margin: 0 auto; padding: 28px 24px 48px; }
-.oidc-page h1 { font-size: 28px; font-weight: 500; margin: 0 0 24px; }
-.oidc-page h2 { font-size: 20px; font-weight: 500; margin: 0 0 16px; }
+.oidc-page { margin: 0; background: #fff; color: #212936; font: 14px/1.5 "UI Sans", Lato, Arial, sans-serif; }
+.oidc-container { box-sizing: border-box; max-width: 960px; margin: 0 auto; padding: 24px 24px 40px; }
+.oidc-page h1 { font-size: 24px; font-weight: 600; line-height: 1.3; margin: 0 0 24px; }
+.oidc-page h2 { font-size: 18px; font-weight: 600; margin: 0 0 16px; }
 .oidc-page p { margin: 12px 0; }
-.oidc-page a { color: #0068a4; text-decoration: underline; }
+.oidc-page a { color: #006eff; text-decoration: none; }
+.oidc-page a:hover { text-decoration: underline; }
 .oidc-nav, .oidc-pagination { display: flex; flex-wrap: wrap; gap: 24px; margin: 16px 0 24px; }
-.oidc-card { background: white; border: 1px solid #dfe3e6; border-radius: 4px; padding: 24px; margin: 20px 0; }
-.oidc-page label { display: block; margin: 18px 0 6px; font-weight: 600; }
-.oidc-page input:not([type=hidden]), .oidc-page select, .oidc-page textarea { display: block; box-sizing: border-box; width: 100%; min-height: 40px; border: 1px solid #aab4bc; border-radius: 3px; padding: 8px 10px; color: inherit; background: white; font: inherit; }
-.oidc-page input[readonly] { background: #f5f6f7; }
-.oidc-page .button { display: inline-block; cursor: pointer; border: 1px solid #aab4bc; border-radius: 3px; padding: 9px 16px; background: #fff; font: inherit; color: #263238; margin: 14px 0 4px; }
-.oidc-page .button--primary { color: white; background: #0074b9; border-color: #0074b9; }
+.oidc-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 24px; margin: 20px 0; }
+.oidc-page label { display: block; margin: 18px 0 6px; font-weight: 500; }
+.oidc-page input:not([type=hidden]), .oidc-page select, .oidc-page textarea { display: block; box-sizing: border-box; width: 100%; min-height: 40px; border: 1px solid #d3d9e1; border-radius: 6px; padding: 8px 12px; color: inherit; background: #fff; font: inherit; }
+.oidc-page input:focus, .oidc-page select:focus, .oidc-page textarea:focus { border-color: #006eff; }
+.oidc-page input[readonly] { background: #f9fafb; }
+.oidc-page .button { display: inline-block; cursor: pointer; border: 1px solid #d3d9e1; border-radius: 6px; padding: 9px 16px; background: #fff; font: inherit; font-weight: 500; color: #212936; margin: 14px 0 4px; }
+.oidc-page .button--primary { color: #fff; background: #006eff; border-color: #006eff; }
+.oidc-page .button--primary:hover { background: #005ce0; }
 .oidc-page button:disabled { opacity: .55; cursor: wait; }
-.oidc-page :focus-visible { outline: 3px solid #54a9db; outline-offset: 3px; }
-.oidc-muted { color: #596773; font-size: 14px; }
-.oidc-notice { padding: 16px; border: 1px solid #9ccab4; background: #effaf4; }
+.oidc-page :focus-visible { outline: 2px solid #006eff; outline-offset: 3px; }
+.oidc-muted { color: #6b7280; font-size: 13px; overflow-wrap: anywhere; }
+.oidc-notice { padding: 16px; border: 1px solid #b8dfcc; border-radius: 6px; background: #f0faf5; }
 .oidc-details { display: grid; grid-template-columns: minmax(140px, 1fr) 3fr; gap: 8px 18px; margin: 14px 0; }
 .oidc-details dt { font-weight: 600; }
 .oidc-details dd { margin: 0; overflow-wrap: anywhere; }
 .oidc-records { list-style: none; padding: 0; }
 .oidc-recovery { margin-top: 28px !important; }
 .oidc-page [hidden] { display: none !important; }
+/* Refer to assets supplied by the installed UISP application. No vendor artwork
+   or font files are bundled with the plugin. The solid background is a fallback. */
+.oidc-login { display: grid; grid-template-columns: 420px minmax(0, 1fr); min-height: 100vh; min-height: 100svh; }
+.oidc-login .oidc-container { display: flex; flex-direction: column; width: 100%; min-height: 100vh; min-height: 100svh; padding: 64px 64px 32px; margin: 0; }
+.oidc-brand { color: #838792; font-size: 30px; line-height: 1; font-weight: 800; letter-spacing: -.04em; }
+.oidc-login-content { margin: auto 0; padding: 56px 0; overflow-wrap: anywhere; }
+.oidc-login h1 { font-size: 24px; }
+.oidc-login-footer { color: #838792; font-size: 13px; text-align: center; }
+.oidc-login-art { position: relative; min-height: 100%; background: #edf2f7 url('/nms/screen-images/013.jpg') center / cover no-repeat; }
+.oidc-login-art span { position: absolute; right: 24px; bottom: 16px; color: #fff; font-size: 11px; text-shadow: 0 1px 3px #000; }
+.oidc-login [role=alert] { border-left: 3px solid #e64848; padding-left: 12px; }
+.oidc-login [role=status] { color: #6b7280; }
+.oidc-login [role=status]::before { content: ''; display: inline-block; width: 14px; height: 14px; margin-right: 9px; vertical-align: -3px; border: 2px solid #dbe8f8; border-top-color: #006eff; border-radius: 50%; animation: oidc-spin .8s linear infinite; }
+.oidc-login [data-failed]::before { display: none; }
+.oidc-login .oidc-recovery { display: flex; flex-direction: column; gap: 12px; font-size: 0; }
+.oidc-login .oidc-recovery a { font-size: 14px; }
+.oidc-login .button--primary { width: 100%; background: linear-gradient(96.1deg, #338cff .54%, #6bd2fd); border: 0; min-height: 44px; }
+@keyframes oidc-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .oidc-login [role=status]::before { animation: none; } }
+@media (max-width: 760px) { .oidc-login { display: block; } .oidc-login .oidc-container { max-width: 420px; margin: 0 auto; padding: 40px 28px 24px; } .oidc-login-art { display: none; } }
 @media (max-width: 600px) { .oidc-container { padding: 18px 14px; } .oidc-card { padding: 18px; } .oidc-details { grid-template-columns: 1fr; gap: 4px; } .oidc-details dd { margin-bottom: 10px; } }

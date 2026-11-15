@@ -21,7 +21,7 @@ let passed = 0;
           if (name.endsWith('.js')) return send(200, {'Content-Type': 'text/javascript'}, fs.readFileSync(path.join(__dirname, '../plugin/public', name)));
           return send(200, {'Content-Type': 'text/css'});
         }
-        if (url.pathname === '/crm/dist/main.min.css') return send(200, {'Content-Type': 'text/css'});
+        if (url.pathname === '/crm/dist/main.min.css' || url.pathname === '/nms/fonts.min.css') return send(200, {'Content-Type': 'text/css'});
         if (url.pathname === entry && url.searchParams.get('action') === 'start') {
           const response = fixture[active.mode][req.method === 'POST' ? 'post' : 'get'];
           if (req.method === 'POST') {
@@ -29,6 +29,7 @@ let passed = 0;
             const body = new URLSearchParams(Buffer.concat(chunks).toString());
             active.starts++; assert.equal(body.get('csrf'), fixture.csrf);
             assert.equal(body.get('preview'), active.mode === 'preview' ? '1' : '0');
+            assert.equal(req.headers.origin, crm);
           }
           return send(response.status, response.headers, response.body);
         }
@@ -37,7 +38,25 @@ let passed = 0;
           assert.equal(url.searchParams.get('code'), 'synthetic-code');
           return send(303, {Location: entry + '?action=complete&flow=' + 'f'.repeat(64), 'Referrer-Policy': 'no-referrer'});
         }
-        if (url.pathname === entry && url.searchParams.get('action') === 'complete') return send(200, {'Content-Type': 'text/html'}, '<h1>Returned to plugin</h1>');
+        if (url.pathname === entry && url.searchParams.get('action') === 'complete') {
+          const response = fixture[active.mode].complete;
+          return send(response.status, response.headers, response.body);
+        }
+        if (url.pathname === entry && url.searchParams.get('action') === 'handoff') {
+          assert.equal(req.method, 'POST'); assert.equal(req.headers.origin, crm);
+          const chunks = []; for await (const chunk of req) chunks.push(chunk);
+          const body = new URLSearchParams(Buffer.concat(chunks).toString());
+          assert.equal(body.get('csrf'), fixture.flowCsrf);
+          assert.equal(body.get('flow'), 'f'.repeat(64)); active.handoffs = (active.handoffs || 0) + 1;
+          const response = fixture.normal.handoff;
+          return send(response.status, response.headers, response.body);
+        }
+        if (url.pathname === '/nms/api/v2.1/user/check-session') {
+          assert.equal(req.method, 'POST'); assert.equal(req.headers['x-auth-token'], fixture.normal.handoff.headers['x-auth-token']);
+          return send(200, {'Content-Type': 'application/json'}, '{}');
+        }
+        if (url.pathname === '/crm/') return send(200, {'Content-Type': 'text/html'}, '<h1>Native CRM fixture</h1>');
+        if (url.pathname === entry && url.searchParams.get('action') === 'error') return send(fixture.expired.status, fixture.expired.headers, fixture.expired.body);
       }
       if (url.origin === issuer) {
         if (url.pathname === '/authorize') {
@@ -72,21 +91,28 @@ let passed = 0;
         page.on('pageerror', e => active.errors.push(e.message));
         page.on('console', m => { if (m.type() === 'error' && /form-action|Content Security Policy/i.test(m.text())) cspErrors.push(m.text()); });
         await page.goto(crm + entry + '?action=start&preview=' + (mode === 'preview' ? '1' : '0'));
-        await page.locator('form button[type=submit]').click();
+        if (baseline) await page.locator('form button[type=submit]').click();
         if (baseline) {
           await page.waitForTimeout(1200);
           assert(cspErrors.length > 0, 'Old POST redirect must reproduce the CSP failure: ' + JSON.stringify({url:page.url(), errors:active.errors, providerRequests:active.providerRequests.length, body:(await page.locator('body').innerText()).slice(0,300)}));
           assert.equal(new URL(page.url()).origin, crm); assert.equal(active.callbacks, 0);
         } else {
           if (!scripting) {
-            await page.getByRole('link', {name: 'Continue to provider', exact: true}).waitFor();
+            await page.getByRole('alert').filter({hasText: 'JavaScript is disabled'}).waitFor();
             assert.equal(new URL(page.url()).origin, crm);
-            await page.getByRole('link', {name: 'Continue to provider', exact: true}).click();
+            assert.equal(await page.getByRole('link', {name: 'Native password login', exact: true}).count(), 1);
+            assert.equal(await page.getByRole('link', {name: 'Plugin settings', exact: true}).count(), 0);
+            assert.equal(await page.getByRole('button').count(), 0);
+            assert.equal(active.starts, 0); assert.equal(active.providerRequests.length, 0);
+            passed++; console.log('PASS ' + mode + ' disabled JavaScript offers failure-only password recovery');
+            await context.close(); continue;
           }
           await page.getByRole('heading', {name: 'Federated sign-in'}).waitFor();
           assert.equal(new URL(page.url()).origin, upstream);
           await page.getByRole('button', {name: 'Finish provider login'}).click();
-          await page.getByRole('heading', {name: 'Returned to plugin'}).waitFor();
+          await page.getByRole('heading', {name: mode === 'normal' ? 'Native CRM fixture' : 'Provider identity preview'}).waitFor();
+          assert.equal(active.handoffs || 0, mode === 'normal' ? 1 : 0);
+          if (mode === 'normal') assert.equal(await page.evaluate(() => localStorage.getItem('x-auth-token')), fixture.normal.handoff.headers['x-auth-token']);
           assert.equal(active.callbacks, 1); assert.equal(active.providerRequests.length, 1);
           assert(!active.providerRequests[0].referer, 'Transition must not send a referrer to the issuer');
           assert.deepEqual(cspErrors, []);
@@ -100,8 +126,7 @@ let passed = 0;
       active = {mode: 'normal', stall: true, starts: 0, callbacks: 0, providerRequests: [], errors: []};
       const context = await browser.newContext({ignoreHTTPSErrors: true});
       const page = await context.newPage();
-      await page.goto(crm + entry + '?action=start');
-      await page.locator('form button[type=submit]').click({noWaitAfter: true});
+      await page.goto(crm + entry + '?action=start', {waitUntil: 'commit'});
       const deadline = Date.now() + 5000;
       while (!active.providerRequests.length && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
       assert.equal(active.providerRequests.length, 1);
@@ -110,7 +135,9 @@ let passed = 0;
       const cdp = await context.newCDPSession(page); await cdp.send('Page.stopLoading');
       await page.waitForFunction(() => document.getElementById('oidc-provider-progress')?.textContent.includes('Provider sign-in has not opened.'), null, {timeout: 15000});
       assert.equal(active.starts, 1); assert.equal(active.providerRequests.length, 1);
-      assert(await page.evaluate(() => !!document.getElementById('oidc-provider-continue') && [...document.querySelectorAll('a')].some(a => a.textContent === 'start again')));
+      assert(await page.getByRole('link', {name: 'Start sign-in again', exact: true}).isVisible());
+      assert(await page.getByRole('link', {name: 'Native password login', exact: true}).isVisible());
+      assert.equal(await page.getByRole('link', {name: 'Plugin settings', exact: true}).count(), 0);
       active.stall = false;
       await page.getByRole('link', {name: 'Continue to provider', exact: true}).click();
       await page.getByRole('heading', {name: 'Federated sign-in'}).waitFor();
@@ -118,6 +145,17 @@ let passed = 0;
       assert.equal(active.starts, 1); assert.equal(active.providerRequests.length, 2);
       console.log('PASS interrupted provider navigation offers recovery and explicit retry only');
       passed++; await context.close();
+      active = {mode: 'normal', starts: 0, callbacks: 0, providerRequests: [], errors: []};
+      const expiredContext = await browser.newContext({ignoreHTTPSErrors: true});
+      const expiredPage = await expiredContext.newPage();
+      await expiredPage.goto(crm + entry + '?action=error&reason=FLOW_USED');
+      await expiredPage.getByRole('alert').filter({hasText: 'expired or has already been used'}).waitFor();
+      assert(await expiredPage.getByRole('link', {name: 'Start sign-in again', exact: true}).isVisible());
+      assert(await expiredPage.getByRole('link', {name: 'Native password login', exact: true}).isVisible());
+      assert.equal(await expiredPage.getByRole('link', {name: 'Plugin settings', exact: true}).count(), 0);
+      assert.equal(active.starts, 0); assert.deepEqual(active.errors, []);
+      console.log('PASS expired or consumed flow requires explicit fresh login and exposes no settings link');
+      passed++; await expiredContext.close();
     }
     console.log(JSON.stringify({suite: 'start-transition-browser', baseline, passed, failed: 0}));
   } finally {await browser.close(); await new Promise(resolve => server.close(resolve));}
