@@ -15,9 +15,11 @@ exact package hashes, completed checks and test limits. The PHP runtime and lock
 dependencies are unchanged from the preceding tested 0.3.0 candidate. The
 [adapter identity update](docs/compatibility.md#discovered-service-identities)
 adds deployment-specific UID/GID discovery and has passed fresh native builds,
-password/OIDC login and signed revocation on both profiles. Use that adapter
-source with the unchanged qualified ZIP; the original v0.3.1 adapter assumes a
-shared service UID. Operational records and credentials are not published.
+password/OIDC login and signed revocation on both profiles. The subsequent
+[0.3.4 authenticator policy](docs/compatibility.md#oidc-authenticator-policy-034)
+retains that service identity discovery and has passed focused native staging
+checks. The original v0.3.1 adapter assumes a shared service UID. Operational
+records and credentials are not published.
 First-party source is available under the [MIT license](LICENSE), also included
 in the packaged plugin. Bundled dependencies retain their own license notices.
 
