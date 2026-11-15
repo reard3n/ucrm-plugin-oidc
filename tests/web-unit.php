@@ -165,6 +165,9 @@ check($start['status'] === 200 && count($start['cookies']) === 1, 'GET start iss
 check(has($start['body'], 'id="oidc-start" hidden') && !has($start['body'], '<button') && has($start['body'], 'id="oidc-login-recovery" hidden'), 'start renders protected automatic POST with failure-only recovery');
 check(!has($start['body'], 'Plugin settings'), 'start has no administration link');
 check(has($start['body'], 'class="oidc-page oidc-login"') && has($start['body'], '/nms/fonts.min.css') && has($start['body'], 'class="oidc-login-art"'), 'login uses UISP font and native-style login shell');
+foreach (['web.js', 'web.css', 'settings-draft.js'] as $asset) {
+    check(has($start['body'], $asset . '?v=' . substr(hash_file('sha256', __DIR__ . '/../plugin/public/' . $asset), 0, 16)), 'start invalidates cached ' . $asset);
+}
 $cookie = $start['cookies'][0];
 check($cookie['name'] === '__Host-ucrm-oidc-browser' && $cookie['options']['path'] === '/' && !isset($cookie['options']['domain']) && $cookie['options']['secure'] && $cookie['options']['httponly'] && $cookie['options']['samesite'] === 'Lax', 'host-only correlation cookie prevents parent-domain shadowing');
 check(!has($start['body'], '<script>bad</script>') && has($start['body'], '&lt;script&gt;'), 'provider label escaped');
@@ -179,6 +182,7 @@ check($startPost['status'] === 200 && !isset($startPost['headers']['Location']) 
 check($startPost['headers']['Referrer-Policy'] === 'no-referrer' && $startPost['headers']['Cache-Control'] === 'no-store, max-age=0' && has($startPost['headers']['Content-Security-Policy'], "form-action 'self';"), 'transition suppresses referrer and caching without broadening CSP');
 check(has($startPost['body'], 'provider-transition.js') && has($startPost['body'], '<noscript>') && has($startPost['body'], 'id="oidc-provider-recovery" hidden'), 'transition has automatic navigation and failure-only recovery');
 check(!has($startPost['body'], 'Plugin settings'), 'provider transition has no administration link');
+check(has($startPost['body'], 'provider-transition.js?v=' . substr(hash_file('sha256', __DIR__ . '/../plugin/public/provider-transition.js'), 0, 16)), 'provider transition invalidates its cached script');
 check(end($app->calls)[1]['fresh'] === true, 'fresh flag passed to core');
 $app->authorizationUrl = 'https://idp.example.test/authorize?state=x&nonce=y&code_challenge=z&code_challenge_method=S256';
 $parameters = $web->handle($postServer, ['action' => 'start'], ['csrf' => $startCsrf], $cookies);
