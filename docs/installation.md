@@ -182,12 +182,24 @@ Register the exact displayed login and back-channel logout URLs with the provide
 Prove inbound signed logout delivery using normal server CA/hostname validation.
 Outbound discovery success does not establish inbound callback reachability.
 
-After the protected start form is submitted, a same-origin transition page opens
+Opening the login URL automatically submits the protected same-origin start
+form. After provider verification, the plugin automatically completes native
+sign-in; neither step requires a button click. JavaScript is required. Healthy
+sign-in pages show progress only, without administrator or password-login links.
+Failures offer an explicit fresh attempt and native password login. History
+restoration and uncertain session issuance never automatically retry a handoff.
+
+A same-origin transition page opens
 the validated provider authorization URL. This lets the provider use a separate
 upstream login service without adding that service to the plugin's form-action
-policy. If automatic navigation is unavailable, choose **Continue to provider**.
+policy. If navigation stalls, recovery includes **Continue to provider**.
 A stalled navigation offers recovery; it does not automatically retry sign-in.
 Provider context/session failures must still be resolved at the provider.
+
+Plugin pages use UISP typography, colors and controls. Login and recovery pages
+follow the native responsive login layout and reference the installation's font
+and background assets. Missing vendor assets fall back to system fonts and a
+solid background; proprietary artwork and fonts are not included in the plugin.
 
 Save login availability and the native execution schedule separately. Keep the
 plugin enabled and select five-minute maintenance for pending native cleanup.

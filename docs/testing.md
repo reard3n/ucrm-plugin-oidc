@@ -112,15 +112,19 @@ source, lock, PHP versions and test results without secrets or private paths.
 
 ## Browser assets
 
-For issue #7, generate actual HTTP response fixtures with
+For issues #7 and #12, generate actual HTTP response fixtures with
 `php tests/start-transition-fixture.php > /private/path/start-fixture.json`, then
 set `OIDC_START_FIXTURE` to that path and run
 `node tests/start-transition-browser.cjs`. The fixture contains a freshly
 generated test-only TLS key: keep it outside the repository and release ZIP.
 The test serves the real handler's HTML/CSP through loopback HTTPS across three
 origins. Chrome follows the issuer's redirects to a federated login and back for
-normal and preview starts, with and without JavaScript. Stopping a stalled issuer
-navigation must show recovery without submitting another start. `--expect-blocked` can reproduce
+normal and preview starts. Normal sign-in automatically performs one protected
+native handoff, checks the native session and opens CRM. With JavaScript disabled,
+the page offers password recovery without creating a provider transaction.
+Expired flows must expose an explicit fresh attempt and no settings link.
+Stopping a stalled issuer navigation must show recovery without submitting
+another start. `--expect-blocked` can reproduce
 the old behavior using a response fixture generated before the fix.
 Run `tests/web-unit.php` and `tests/setup-issues.php` for the related server-side
 URL/Origin/CSRF/admin gates and real signed-provider/PKCE preview checks.

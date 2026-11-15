@@ -20,4 +20,11 @@ foreach (['normal' => '0', 'preview' => '1'] as $name => $preview) {
     $output[$name] = ['get' => $web->handle($server, ['action' => 'start', 'preview' => $preview], [], $cookies),
         'post' => $web->handle($postServer, ['action' => 'start'], ['csrf' => $output['csrf'], 'preview' => $preview, 'fresh' => '0', 'return' => '/crm/'], $cookies)];
 }
+$flow = str_repeat('f', 64);
+$output['normal']['complete'] = $web->handle($server, ['action' => 'complete', 'flow' => $flow], [], $cookies);
+$output['normal']['handoff'] = $web->handle($postServer, ['action' => 'handoff'], ['csrf' => $app->csrf($browser, 'flow:' . $flow), 'flow' => $flow], $cookies);
+$output['flowCsrf'] = $app->csrf($browser, 'flow:' . $flow);
+$app->completionVm = ['kind' => 'preview', 'previewRequiresAdminId' => $app->session->context['nativeUserId'], 'preview' => []];
+$output['preview']['complete'] = $web->handle($server, ['action' => 'complete', 'flow' => $flow], [], $cookies);
+$output['expired'] = $web->handle($server, ['action' => 'error', 'reason' => 'FLOW_USED'], [], $cookies);
 echo json_encode($output, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), "\n";

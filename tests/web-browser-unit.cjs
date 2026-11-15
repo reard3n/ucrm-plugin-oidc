@@ -15,8 +15,8 @@ let activeTest = 'launch';
 async function test(name, work) { activeTest = name; await work(); tests.push({name, passed: true}); }
 const nativeForm = '<form id="native-password"><label>Username<input id="username" name="username"></label><label>Password<input name="password" type="password"></label><button type="submit">Sign in</button></form>';
 const completion = '<!doctype html><html><head><script defer src="/crm/_plugins/ucrm-oidc/public/web.js"></script></head><body><div id="oidc-signin">'
-  + '<form id="oidc-handoff" method="post" action="' + entry + '?action=handoff"><input name="csrf" type="hidden" value="synthetic-csrf"><input name="flow" type="hidden" value="' + 'f'.repeat(64) + '"><button>Continue signing in</button></form>'
-  + '<form id="oidc-mfa" method="post" action="' + entry + '?action=mfa-complete" hidden><input name="csrf" type="hidden" value="synthetic-csrf"><input name="flow" type="hidden" value="' + 'f'.repeat(64) + '"><label>Code<input name="otp" required pattern="[0-9]{6}" maxlength="6"></label><button>Verify</button></form><p id="oidc-progress" role="status"></p></div></body></html>';
+  + '<form id="oidc-handoff" hidden data-auto-handoff="1" method="post" action="' + entry + '?action=handoff"><input name="csrf" type="hidden" value="synthetic-csrf"><input name="flow" type="hidden" value="' + 'f'.repeat(64) + '"></form>'
+  + '<form id="oidc-mfa" method="post" action="' + entry + '?action=mfa-complete" hidden><input name="csrf" type="hidden" value="synthetic-csrf"><input name="flow" type="hidden" value="' + 'f'.repeat(64) + '"><label>Code<input name="otp" required pattern="[0-9]{6}" maxlength="6"></label><button>Verify</button></form><p id="oidc-progress" role="status"></p></div><div id="oidc-login-recovery" hidden><a href="' + entry + '?action=start">Start sign-in again</a><a href="/nms/login">Native password login</a></div></body></html>';
 
 (async () => {
   const browser = await playwright.chromium.launch({channel: 'chrome', headless: true});
@@ -115,9 +115,8 @@ const completion = '<!doctype html><html><head><script defer src="/crm/_plugins/
       assert.equal(await page.locator('#ucrm-oidc-native-login').count(), 0);
       assert.equal(await page.locator('#native-password').evaluate(node => node.outerHTML), nativeForm);
     });
-    await test('native handoff checks session then persists exact native token and navigates', async () => {
+    await test('automatic native handoff checks session then persists exact native token and navigates', async () => {
       await page.goto(origin + entry + '?action=complete&flow=' + 'f'.repeat(64));
-      await page.locator('#oidc-handoff button').click();
       await page.waitForURL(origin + '/crm/');
       assert.equal(await page.evaluate(() => localStorage.getItem('x-auth-token')), token);
       assert.deepEqual(checkedTokens, [token]);
@@ -127,18 +126,18 @@ const completion = '<!doctype html><html><head><script defer src="/crm/_plugins/
     });
     await test('failed native check never replaces existing localStorage or navigates', async () => {
       nativeStatus = 401;
-      await page.goto(origin + entry + '?action=complete&flow=' + 'f'.repeat(64));
       await page.evaluate(() => localStorage.setItem('x-auth-token', 'previous-native-token'));
-      await page.locator('#oidc-handoff button').click();
+      await page.goto(origin + entry + '?action=complete&flow=' + 'f'.repeat(64));
       await page.getByRole('status').filter({hasText: 'Sign-in could not be completed.'}).waitFor();
       assert.equal(await page.evaluate(() => localStorage.getItem('x-auth-token')), 'previous-native-token');
-      assert.equal(await page.locator('#oidc-handoff button').isDisabled(), true);
+      assert.equal(await page.locator('#oidc-login-recovery').isVisible(), true);
+      const count = submitted.length; await page.locator('#oidc-handoff').evaluate(form => form.requestSubmit());
+      await page.waitForTimeout(100); assert.equal(submitted.length, count);
       assert.equal(new URL(page.url()).searchParams.get('action'), 'complete');
     });
     await test('MFA challenge stays server-side and invalid OTP permits explicit retry', async () => {
       nativeStatus = 200; flowReply = {ok: true, kind: 'mfa'};
       await page.goto(origin + entry + '?action=complete&flow=' + 'f'.repeat(64));
-      await page.locator('#oidc-handoff button').click();
       await page.locator('#oidc-mfa').waitFor({state: 'visible'});
       assert.equal(await page.locator('#oidc-handoff').isHidden(), true);
       flowReply = {ok: false, error: {code: 'MFA_INVALID'}}; flowStatus = 400;
@@ -158,18 +157,41 @@ const completion = '<!doctype html><html><head><script defer src="/crm/_plugins/
     await test('uncertain issuance never enables a browser retry', async () => {
       abortFlow = true;
       await page.goto(origin + entry + '?action=complete&flow=' + 'f'.repeat(64));
-      await page.locator('#oidc-handoff button').click();
       await page.getByRole('status').filter({hasText: 'Sign-in could not be completed.'}).waitFor();
-      assert.equal(await page.locator('#oidc-handoff button').isDisabled(), true);
+      assert.equal(await page.locator('#oidc-login-recovery').isVisible(), true);
+      const count = submitted.length; await page.locator('#oidc-handoff').evaluate(form => form.requestSubmit());
+      await page.waitForTimeout(100); assert.equal(submitted.length, count);
     });
     await test('malformed return never navigates externally', async () => {
       abortFlow = false; flowReply = {ok: true, kind: 'session', returnPath: '//attacker.example.test/'};
       await page.goto(origin + entry + '?action=complete&flow=' + 'f'.repeat(64));
       const before = checkedTokens.length;
-      await page.locator('#oidc-handoff button').click();
       await page.getByRole('status').filter({hasText: 'Sign-in could not be completed.'}).waitFor();
       assert.equal(checkedTokens.length, before);
       assert.equal(new URL(page.url()).origin, origin);
+    });
+    await test('identity mismatch offers explicit recovery without switching accounts', async () => {
+      const previous = await page.evaluate(() => localStorage.getItem('x-auth-token'));
+      flowStatus = 409; flowReply = {ok: false, error: {code: 'SIGN_OUT_OTHER_ACCOUNT'}};
+      await page.goto(origin + entry + '?action=complete&flow=' + 'f'.repeat(64));
+      await page.getByRole('status').filter({hasText: 'A different native account is already signed in.'}).waitFor();
+      assert(await page.getByRole('link', {name: 'Native password login'}).isVisible());
+      assert.equal(await page.evaluate(() => localStorage.getItem('x-auth-token')), previous);
+    });
+    await test('duplicate script initialization cannot repeat a consumed handoff', async () => {
+      const count = submitted.length;
+      await page.addScriptTag({url: origin + '/crm/_plugins/ucrm-oidc/public/web.js'});
+      await page.locator('#oidc-handoff').evaluate(form => form.requestSubmit());
+      await page.waitForTimeout(100);
+      assert.equal(submitted.length, count);
+    });
+    await test('back navigation exposes recovery without replaying handoff', async () => {
+      const count = submitted.length;
+      await page.goto(origin + '/crm/');
+      await page.goBack();
+      await page.getByRole('status').filter({hasText: 'This sign-in page has already been opened.'}).waitFor();
+      assert(await page.getByRole('link', {name: 'Start sign-in again'}).isVisible());
+      assert.equal(submitted.length, count);
     });
     await test('no browser script errors or unexpected network destinations', async () => {
       assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
@@ -217,7 +239,6 @@ const completion = '<!doctype html><html><head><script defer src="/crm/_plugins/
         assert.equal(completionReferrer, undefined);
         assert.equal(new URL(cspPage.url()).searchParams.has('code'), false);
         assert.equal(new URL(cspPage.url()).searchParams.has('state'), false);
-        await cspPage.locator('#oidc-handoff button').click();
         await cspPage.locator('#oidc-mfa').waitFor({state: 'visible'});
         assert.equal(handoffOrigin, origin);
       } finally { await cspContext.close(); }

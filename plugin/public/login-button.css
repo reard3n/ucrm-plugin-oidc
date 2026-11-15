@@ -1,4 +1,4 @@
 .ucrm-oidc-native-login { margin: 20px 0; text-align: center; }
-.ucrm-oidc-native-login-link { display: inline-block; padding: 10px 18px; border: 1px solid #0580c9; border-radius: 4px; color: #0574b3; background: #fff; font: inherit; text-decoration: none; }
-.ucrm-oidc-native-login-link:hover, .ucrm-oidc-native-login-link:focus-visible { background: #edf7fd; text-decoration: underline; }
-.ucrm-oidc-native-login-link:focus-visible { outline: 3px solid #54a9db; outline-offset: 3px; }
+.ucrm-oidc-native-login-link { display: inline-block; padding: 10px 18px; border: 1px solid #006eff; border-radius: 6px; color: #006eff; background: #fff; font: inherit; font-weight: 500; text-decoration: none; }
+.ucrm-oidc-native-login-link:hover, .ucrm-oidc-native-login-link:focus-visible { background: #f0f6ff; text-decoration: none; }
+.ucrm-oidc-native-login-link:focus-visible { outline: 2px solid #006eff; outline-offset: 3px; }
