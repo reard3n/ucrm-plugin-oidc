@@ -191,7 +191,7 @@ final class Web
             // provider. A 303 here carries form-action into its federated redirects.
             $restart = Config::ENTRY . '?' . http_build_query(['action' => 'start', 'return' => $return, 'preview' => $preview ? '1' : '0', 'fresh' => $fresh ? '1' : '0']);
             $body = '<p id="oidc-provider-progress" role="status">Opening your identity provider...</p><div id="oidc-provider-recovery" hidden><p><a id="oidc-provider-continue" rel="noreferrer" data-provider-origin="' . self::e($origin) . '" href="' . self::e($url) . '">Continue to provider</a></p>' . $this->loginRecovery($restart) . '</div>' . $this->noScriptRecovery()
-                . '<script defer src="' . self::ASSETS . 'provider-transition.js"></script>';
+                . '<script defer src="' . self::asset('provider-transition.js') . '"></script>';
             return $this->page('Continue to your identity provider', $body);
         }
         $csrf = $this->app->csrf($browser, 'flow:start');
@@ -464,6 +464,13 @@ final class Web
     }
     private function json(array $value, int $status = 200, array $headers = []): array { return $this->response($status, $headers + ['Content-Type' => 'application/json; charset=UTF-8'], json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)); }
     private function redirect(string $location): array { if (preg_match('/[\r\n]/', $location)) { throw new AppException('BAD_REQUEST'); } return $this->response(303, ['Location' => $location], ''); }
+    private static function asset(string $name): string
+    {
+        // Native static-file caching outlives plugin updates. Tie each URL to
+        // its installed bytes so returning browsers load the matching code.
+        return self::ASSETS . $name . '?v=' . substr(hash_file('sha256', dirname(__DIR__) . '/public/' . $name), 0, 16);
+    }
+
     private function page(string $title, string $body, int $status = 200, bool $nativeForm = false): array
     {
         // Navigation form POSTs serialize Origin:null under no-referrer. These
@@ -477,6 +484,6 @@ final class Web
             $content = '<div class="oidc-brand" aria-label="UISP">UISP</div><section class="oidc-login-content">' . $content . '</section><p class="oidc-login-footer">OpenID Connect</p>';
         }
         $art = $this->loginPage ? '<aside class="oidc-login-art" aria-hidden="true"><span>Photo by fabiensf at Brussels, Belgium</span></aside>' : '';
-        return $this->response($status, $headers, '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' . self::e($title) . '</title><link rel="stylesheet" href="/crm/dist/main.min.css"><link rel="stylesheet" href="/nms/fonts.min.css"><link rel="stylesheet" href="' . self::ASSETS . 'web.css"><script defer src="' . self::ASSETS . 'web.js"></script>' . ($nativeForm ? '<script defer src="' . self::ASSETS . 'settings-draft.js"></script>' : '') . '</head><body class="oidc-page' . ($this->loginPage ? ' oidc-login' : '') . '"><main class="oidc-container">' . $content . '</main>' . $art . '</body></html>');
+        return $this->response($status, $headers, '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' . self::e($title) . '</title><link rel="stylesheet" href="/crm/dist/main.min.css"><link rel="stylesheet" href="/nms/fonts.min.css"><link rel="stylesheet" href="' . self::asset('web.css') . '"><script defer src="' . self::asset('web.js') . '"></script>' . ($nativeForm ? '<script defer src="' . self::asset('settings-draft.js') . '"></script>' : '') . '</head><body class="oidc-page' . ($this->loginPage ? ' oidc-login' : '') . '"><main class="oidc-container">' . $content . '</main>' . $art . '</body></html>');
     }
 }

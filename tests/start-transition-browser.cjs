@@ -16,11 +16,17 @@ let passed = 0;
       const url = new URL(req.url, 'https://' + req.headers.host);
       if (url.pathname === '/favicon.ico') return send(204);
       if (url.origin === crm) {
+        if (url.pathname === '/old-plugin-cache') return send(200, {'Content-Type': 'text/html'}, '<!doctype html><link rel="stylesheet" href="/crm/_plugins/ucrm-oidc/public/web.css"><script src="/crm/_plugins/ucrm-oidc/public/web.js"></script><script src="/crm/_plugins/ucrm-oidc/public/provider-transition.js"></script><script src="/crm/_plugins/ucrm-oidc/public/settings-draft.js"></script><h1>Old plugin cache fixture</h1>');
         if (url.pathname.startsWith('/crm/_plugins/ucrm-oidc/public/')) {
           const name = path.basename(url.pathname);
+          if (!baseline && !url.searchParams.has('v') && ['web.js', 'provider-transition.js', 'settings-draft.js', 'web.css'].includes(name)) {
+            active.oldAssets = (active.oldAssets || 0) + 1;
+            return send(200, {'Content-Type': name.endsWith('.js') ? 'text/javascript' : 'text/css', 'Cache-Control': 'public, max-age=86400'}, name.endsWith('.js') ? 'window.oldPluginAsset = true;' : 'body { font-family: monospace; }');
+          }
           if (name.endsWith('.js')) return send(200, {'Content-Type': 'text/javascript'}, fs.readFileSync(path.join(__dirname, '../plugin/public', name)));
-          return send(200, {'Content-Type': 'text/css'});
+          return send(200, {'Content-Type': 'text/css'}, fs.readFileSync(path.join(__dirname, '../plugin/public', name)));
         }
+        if (url.pathname === '/nms/screen-images/013.jpg') return send(204);
         if (url.pathname === '/crm/dist/main.min.css' || url.pathname === '/nms/fonts.min.css') return send(200, {'Content-Type': 'text/css'});
         if (url.pathname === entry && url.searchParams.get('action') === 'start') {
           const response = fixture[active.mode][req.method === 'POST' ? 'post' : 'get'];
@@ -90,6 +96,11 @@ let passed = 0;
         const page = await context.newPage(), cspErrors = [];
         page.on('pageerror', e => active.errors.push(e.message));
         page.on('console', m => { if (m.type() === 'error' && /form-action|Content Security Policy/i.test(m.text())) cspErrors.push(m.text()); });
+        if (!baseline && scripting) {
+          await page.goto(crm + '/old-plugin-cache');
+          assert.equal(await page.evaluate(() => window.oldPluginAsset), true);
+          assert.equal(active.oldAssets, 4);
+        }
         await page.goto(crm + entry + '?action=start&preview=' + (mode === 'preview' ? '1' : '0'));
         if (baseline) await page.locator('form button[type=submit]').click();
         if (baseline) {
@@ -116,6 +127,7 @@ let passed = 0;
           assert.equal(active.callbacks, 1); assert.equal(active.providerRequests.length, 1);
           assert(!active.providerRequests[0].referer, 'Transition must not send a referrer to the issuer');
           assert.deepEqual(cspErrors, []);
+          assert.equal(active.oldAssets, 4, 'Automatic login must not reuse unversioned cached assets');
         }
         assert.equal(active.starts, 1); assert.deepEqual(active.errors, []);
         console.log('PASS ' + mode + (baseline ? ' reproduces old CSP blocker' : scripting ? ' automatic federated navigation' : ' manual navigation without JavaScript'));
@@ -148,13 +160,16 @@ let passed = 0;
       active = {mode: 'normal', starts: 0, callbacks: 0, providerRequests: [], errors: []};
       const expiredContext = await browser.newContext({ignoreHTTPSErrors: true});
       const expiredPage = await expiredContext.newPage();
+      await expiredPage.goto(crm + '/old-plugin-cache');
+      assert.equal(await expiredPage.evaluate(() => getComputedStyle(document.body).fontFamily), 'monospace');
       await expiredPage.goto(crm + entry + '?action=error&reason=FLOW_USED');
+      assert((await expiredPage.evaluate(() => getComputedStyle(document.body).fontFamily)).includes('UI Sans'), 'Updated error page must load its current CSS despite the old cached stylesheet');
       await expiredPage.getByRole('alert').filter({hasText: 'expired or has already been used'}).waitFor();
       assert(await expiredPage.getByRole('link', {name: 'Start sign-in again', exact: true}).isVisible());
       assert(await expiredPage.getByRole('link', {name: 'Native password login', exact: true}).isVisible());
       assert.equal(await expiredPage.getByRole('link', {name: 'Plugin settings', exact: true}).count(), 0);
       assert.equal(active.starts, 0); assert.deepEqual(active.errors, []);
-      console.log('PASS expired or consumed flow requires explicit fresh login and exposes no settings link');
+      console.log('PASS cached old assets do not prevent UISP styling or explicit expired-flow recovery');
       passed++; await expiredContext.close();
     }
     console.log(JSON.stringify({suite: 'start-transition-browser', baseline, passed, failed: 0}));
