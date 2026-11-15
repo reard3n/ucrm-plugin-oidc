@@ -8,8 +8,7 @@ Decode 32 bytes. HKDF-SHA256, empty salt, 32 output bytes, info
 
 One LF-terminated JSON frame per connection, maximum 16384 bytes excluding LF;
 body decoded maximum 8192 bytes; timeout 5 seconds. Never retry `issue` after
-an uncertain response. `complete-mfa` can also consume a challenge before an
-uncertain response; start a new login after uncertainty.
+an uncertain response. Start a new login after uncertainty.
 
 Exact envelope fields:
 `{v:2,caller:"ucrm-oidc",keyId:"installation-v1",at:<integer Unix seconds>,nonce:<64 lowercase hex>,body:<unpadded canonical base64url JSON>,mac:<64 lowercase hex>}`.
@@ -52,12 +51,9 @@ resolve/inspect: {kind:'user',user:{id,username,email,role,ucrmRole,
 describe-caller: {kind:'caller',nativeUserId,username,role,ucrmRole,
                  createdAt:<Unix seconds>,source:'adapter'|'native-unattributed',
                  sessionId:<same supplied cookie>}
-issue non-MFA / complete-mfa:
+issue (including accounts with native TOTP enabled):
  {kind:'session',token,ucrmSessionId,cookieTtlMs,user:<same user projection>,
   createdAt:<native Unix seconds>,receipt:<opaque string>}
-issue MFA:
- {kind:'mfa',twoFactorToken,user:<same user projection>,
-  expiresAt:<native challenge Unix seconds>,receipt:<opaque string>}
 revoke: {kind:'revoked'}
 ```
 
@@ -69,15 +65,18 @@ reset callers for identity-mismatch detection even though OIDC admission would
 deny them. Invalid, disabled and expired caller cookies return ADMISSION_DENIED;
 AUTHENTICATION_FAILED refers to private transport authentication only.
 
-Raw MFA challenge stays server-side in encrypted RP transaction storage. Browser
-receives only the OTP form. Complete-mfa checks the live attempt and receipt,
-fresh account/config state, then injects the unchanged native POST
-`/nms/api/v2.1/user/login/totpauth`, with exact native payload and bounded audit
-address/User-Agent. It never injects auth credentials or bypasses route auth.
-Success is validated and receipted before RP persistence/browser handoff.
-Wrong codes use native counters; expired/consumed/mismatched challenges fail.
-An API-process restart invalidates incomplete attempts, but existing receipts
-still permit exact cleanup. No attest-session operation exists.
+The authenticated RP validates the OIDC identity before requesting issuance.
+The provider owns authentication/MFA for this path. The adapter calls the native
+session factory directly regardless of native TOTP enrollment, without changing
+the account or the native password/MFA routes. The returned native pair is
+validated and receipted before RP persistence/browser handoff.
+
+`complete-mfa` remains recognized for protocol-2 compatibility but verifies its
+receipt and fails with `MFA_EXPIRED`; it never issues a session. A fresh OIDC
+login is required. As with any API-process replacement, incomplete legacy MFA
+attempts cannot survive the upgrade. Legacy `mfa` receipts still permit exact
+cleanup through `revoke`, including when login is disabled. PHP retains handling
+for older adapters during staged upgrades. No attest-session operation exists.
 
 Receipt is opaque and versioned, bound with dedicated-domain HMAC to native
 UUID, artifact kind (`session` or `mfa`) and SHA256 of its exact value. It

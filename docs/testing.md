@@ -4,6 +4,30 @@ The public preparation carries synthetic source tests. They do not contain real
 credentials or contact an operational identity provider. Placeholder domains,
 documentation IPs, loopback TLS servers and generated keys belong to fixtures.
 
+## OIDC authenticator policy regression
+
+Run `node --test adapter/test/adapter.test.cjs` and `tests/oidc-authenticator.php`
+under both supported PHP runtimes using the dependency setup below. The latter
+checks verified OIDC handoff for a TOTP-enrolled account, preserved account data,
+replay denial and revocation, and rejection of invalid signatures, nonce, email,
+disabled accounts and unvalidated handoffs. The PHP adapter is an explicit test
+double; native behavior must also be checked in isolated staging.
+
+For the native check, use a synthetic precreated staff account enrolled through
+the native authenticator UI/API. Verify the old adapter returns a challenge,
+then replace only the API adapter image through its existing service owner.
+Verify the new adapter returns a native session for that same account, both
+NMS and CRM protected reads use its existing identity/permissions, duplicate
+issuance fails, and its receipt revokes both native artifacts. Independently
+verify native password login requires an OTP, rejects a wrong code, and accepts
+the original authenticator code. Keep that password session as a control while
+revoking the OIDC session. Clean up owned sessions and restore temporary test
+enrollment. Never use an operator's production authenticator as the fixture.
+
+Core OIDC, concurrency and logout-coordination suites retain explicit
+`legacyMfa` fixtures to exercise old-adapter cleanup during staged upgrades.
+The default adapter fixture follows the new policy.
+
 ## Source and artifact boundaries
 
 ```text

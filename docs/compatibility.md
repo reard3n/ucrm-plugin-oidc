@@ -23,6 +23,41 @@ cleanup, replay after CRM restart/replacement, preserved logout fences/state,
 bounded log privacy and cleanup of owned sessions passed. That completed
 functional evidence does not by itself accept the newly packaged public artifact.
 
+## OIDC authenticator policy (0.3.4)
+
+Source `b2423b65390bdccdfc373d86ab60dc7b8066c5f8` implements
+[issue #10](https://github.com/reard3n/ucrm-plugin-oidc/issues/10): validated OIDC
+authentication goes directly to the existing native session factory. Native
+password login still requires its configured authenticator. No account, password,
+authenticator or permission setting is changed by the OIDC adapter.
+
+Focused acceptance on both profiles listed above:
+
+- The previous adapter reproduced the redundant MFA challenge on a synthetic
+  TOTP-enrolled staff account.
+- Each newly built immutable adapter passed 15 native checks: direct issuance,
+  correct protected NMS/CRM identity and existing permissions, replay rejection,
+  exact session revocation, retained password-session control, wrong native OTP
+  rejection, correct native OTP completion, and owned-session cleanup.
+- The adapter unit suite passed 21 tests. On each PHP runtime, the focused OIDC
+  authenticator suite passed 16 assertions, core OIDC 112, concurrency 55 and
+  logout coordination 56. Legacy challenge cases explicitly select an older
+  adapter fixture; they remain useful for rolling-upgrade cleanup compatibility.
+- Staging API image replacement preserved runtime environment values, mounts
+  and unrelated service identities. Temporary fixture enrollment was restored.
+
+These checks combine real native adapter/session tests with separate PHP OIDC
+validation tests using synthetic signed provider responses. They do not claim
+a new end-to-end external-provider browser pilot or a production deployment.
+Only the adapter behavior and related regression coverage were requalified.
+
+Updating the ZIP alone does not update the adapter. Deploy the qualified adapter
+through the existing native API service owner; no proxy or CRM replacement is
+required for this policy change. Preserve the installation key and state. An
+incomplete old OIDC/MFA transaction must restart after API replacement, as with
+previous adapter updates; its receipt still permits exact cleanup. Existing
+native password/MFA routes are unchanged.
+
 ## Public 0.3.1 package
 
 The 0.3.1 release candidate passed package qualification, native frontend updates

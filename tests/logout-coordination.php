@@ -123,7 +123,7 @@ try {
         $pending['browser'], $pending['start']['flowId'], $pending['audit'], null), 'PROVIDER_LOGGED_OUT');
     check('fenced verified flow never reaches native issuance', $f['adapter']->issues === 0);
 
-    $f = fixture(); $uid = array_key_first($f['adapter']->users); $f['adapter']->users[$uid]['totpAuthEnabled'] = true;
+    $f = fixture(); $uid = array_key_first($f['adapter']->users); $f['adapter']->legacyMfa = true; $f['adapter']->users[$uid]['totpAuthEnabled'] = true;
     $pending = issuedLogin($f, 'waiting-mfa');
     check('logout revokes a waiting native MFA challenge', $f['app']->backchannelLogout(signedLogout($f, 'waiting-mfa'), auditForLogout())['ok']
         && !$f['adapter']->challenges && !$f['adapter']->sessions);
@@ -163,7 +163,7 @@ try {
     } finally { if (is_resource($worker['process'])) { proc_terminate($worker['process'], 9); } }
 
     foreach ([false, true] as $mfa) {
-        $f = fixture(); $uid = array_key_first($f['adapter']->users); $f['adapter']->users[$uid]['totpAuthEnabled'] = $mfa;
+        $f = fixture(); $uid = array_key_first($f['adapter']->users); $f['adapter']->legacyMfa = $mfa; $f['adapter']->users[$uid]['totpAuthEnabled'] = $mfa;
         $login = verifiedLogin($f, 'inflight');
         sharedFixture($f); [$app] = sharedApplication($f['dir'], 'observer');
         if ($mfa) { $app->handoff($login['browser'], $login['start']['flowId'], $login['audit'], null); }
@@ -254,7 +254,7 @@ try {
     check('legacy cleanup uses recorded native receipt and reopens admission', !$f['adapter']->sessions && $f['app']->status()['ready']
         && $f['store']->one('SELECT value FROM meta WHERE key=?', ['logout_legacy_cleanup'])['value'] === 'complete');
 
-    $f = fixture(); $uid = array_key_first($f['adapter']->users); $f['adapter']->users[$uid]['totpAuthEnabled'] = true;
+    $f = fixture(); $uid = array_key_first($f['adapter']->users); $f['adapter']->legacyMfa = true; $f['adapter']->users[$uid]['totpAuthEnabled'] = true;
     $a = issuedLogin($f, 'legacy-mfa'); $f['store']->run('DELETE FROM flow_context');
     denied('unindexed native MFA challenge gates new admission', fn() => login($f), 'LEGACY_CLEANUP_PENDING');
     $f['app']->maintenance();

@@ -15,7 +15,7 @@ flowchart LR
   Plugin --> SQLite[Encrypted persistent SQLite state]
   Plugin --> Socket[Authenticated private Unix socket]
   Socket --> Adapter[Native NMS adapter]
-  Adapter --> Issuer[Existing native issuer / MFA / revocation]
+  Adapter --> Issuer[Existing native issuer / revocation]
 ```
 
 The adapter runs at the version-checked native API startup seam. Current UISP
@@ -24,6 +24,13 @@ profile separates API and device WebSocket roles. Only API receives the adapter.
 No general command executor, Docker socket or public issuance endpoint is added.
 The [wire contract](../adapter/CONTRACT.md) defines request authentication,
 nonce/epoch checks and native receipt handling.
+
+After provider validation, OIDC issues a native session directly, including for
+accounts with native TOTP enabled. The provider owns authentication and MFA on
+this path; configure the required assurance there. The adapter never disables or
+edits native TOTP settings. The unchanged native password routes continue to
+require native MFA. Existing account eligibility and permission checks apply to
+both kinds of OIDC account, and no browser parameter can select a bypass.
 
 The SQLite database and installation key live outside the removable plugin
 directory. State includes encrypted credentials, one-use browser transactions,

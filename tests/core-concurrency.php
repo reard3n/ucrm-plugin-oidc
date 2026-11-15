@@ -39,7 +39,7 @@ final class SharedAdapterSpy {
         try {
             $state = readJson($this->directory . '/spy.json');
             $adapter = new Adapter($this->crypto);
-            foreach (['users','sessions','challenges','issues','enabled','epoch','revision'] as $key) { $adapter->$key = $state[$key]; }
+            foreach (['users','sessions','challenges','issues','enabled','epoch','revision','legacyMfa'] as $key) { $adapter->$key = $state[$key]; }
             $state['calls'][] = ['worker' => $this->worker, 'operation' => $operation];
             if (isset($control['failComplete']) && $operation === 'complete-mfa') {
                 $response = json_encode(['ok' => false, 'error' => ['code' => $control['failComplete']]]) . "\n";
@@ -48,7 +48,7 @@ final class SharedAdapterSpy {
             } else {
                 $response = $adapter->exchange($frame);
             }
-            foreach (['users','sessions','challenges','issues','enabled','epoch','revision'] as $key) { $state[$key] = $adapter->$key; }
+            foreach (['users','sessions','challenges','issues','enabled','epoch','revision','legacyMfa'] as $key) { $state[$key] = $adapter->$key; }
             atomicJson($this->directory . '/spy.json', $state);
         } finally { flock($handle, LOCK_UN); fclose($handle); }
         if (($control['pauseWorker'] ?? null) === $this->worker && ($control['pauseAfterOperation'] ?? null) === $operation) {
@@ -69,7 +69,7 @@ final class SharedAdapterSpy {
 
 function sharedFixture(array $fixture): array {
     $state = ['calls' => []];
-    foreach (['users','sessions','challenges','issues','enabled','epoch','revision'] as $key) { $state[$key] = $fixture['adapter']->$key; }
+    foreach (['users','sessions','challenges','issues','enabled','epoch','revision','legacyMfa'] as $key) { $state[$key] = $fixture['adapter']->$key; }
     atomicJson($fixture['dir'] . '/spy.json', $state);
     atomicJson($fixture['dir'] . '/control.json', []);
     return $fixture;
@@ -238,7 +238,7 @@ try {
     check('lock contention produces only winner ledger and binding', $f['store']->one('SELECT COUNT(*) AS n FROM sessions')['n'] === 1
         && $f['store']->one('SELECT COUNT(*) AS n FROM bindings WHERE active=1')['n'] === 1);
 
-    $f = fixture(); $uid = array_key_first($f['adapter']->users); $f['adapter']->users[$uid]['totpAuthEnabled'] = true;
+    $f = fixture(); $uid = array_key_first($f['adapter']->users); $f['adapter']->legacyMfa = true; $f['adapter']->users[$uid]['totpAuthEnabled'] = true;
     $login = login($f); callback($f, $login); sharedFixture($f); [$app] = sharedApplication($f['dir'], 'mfa');
     check('unit MFA handoff exposes no challenge', $app->handoff($login['browser'], $login['start']['flowId'], $login['audit'], null) === ['kind' => 'mfa']);
     atomicJson($f['dir'] . '/control.json', ['failComplete' => 'MFA_EXPIRED', 'failRevoke' => true]);
@@ -254,7 +254,7 @@ try {
     check('reopened application retries exact native challenge cleanup', count(readJson($f['dir'] . '/spy.json')['challenges']) === 0);
     check('successful cleanup retires queued flow', $f['store']->one('SELECT id FROM flows WHERE id=?', [$flow['id']]) === null);
 
-    $f = fixture(); $uid = array_key_first($f['adapter']->users); $f['adapter']->users[$uid]['totpAuthEnabled'] = true;
+    $f = fixture(); $uid = array_key_first($f['adapter']->users); $f['adapter']->legacyMfa = true; $f['adapter']->users[$uid]['totpAuthEnabled'] = true;
     $login = login($f); callback($f, $login); sharedFixture($f); [$app] = sharedApplication($f['dir'], 'lost-mfa-response');
     $app->handoff($login['browser'], $login['start']['flowId'], $login['audit'], null);
     atomicJson($f['dir'] . '/control.json', ['dropAfterOperation' => 'complete-mfa']);
@@ -311,7 +311,7 @@ try {
             && count(readJson($f['dir'] . '/spy.json')['sessions']) === 1
             && $f['store']->one('SELECT COUNT(*) AS n FROM sessions')['n'] === 0);
     }
-    $f = fixture(); $uid = array_key_first($f['adapter']->users); $f['adapter']->users[$uid]['totpAuthEnabled'] = true;
+    $f = fixture(); $uid = array_key_first($f['adapter']->users); $f['adapter']->legacyMfa = true; $f['adapter']->users[$uid]['totpAuthEnabled'] = true;
     $login = login($f); callback($f, $login); sharedFixture($f); [$app] = sharedApplication($f['dir'], 'malformed-mfa-success');
     $app->handoff($login['browser'], $login['start']['flowId'], $login['audit'], null);
     atomicJson($f['dir'] . '/control.json', ['malformOperation' => 'complete-mfa', 'omitField' => 'receipt']);
