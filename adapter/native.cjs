@@ -22,8 +22,8 @@ function createNativeHandler({ server, readConfig, receiptKey, profile, nativeMe
   const { auth, user: users, settings, bruteForce, messageHub, dal } = server.plugins;
   const db = dal?.crmRepository?.db;
   const messages = nativeMessages || messageHub?.messages;
-  const methods = ['createSessionToken', 'createTwoFactorToken', 'validateApiToken', 'validateSessionId',
-    'validateTwoFactorToken', 'removeToken', 'removeTokenBySessionId'];
+  const methods = ['createSessionToken', 'validateApiToken', 'validateSessionId',
+    'removeToken', 'removeTokenBySessionId'];
   if (!auth || methods.some(k => typeof auth[k] !== 'function') || typeof users?.getUser !== 'function' ||
       typeof settings?.getSettings !== 'function' || typeof db?.oneOrNone !== 'function' ||
       typeof dal?.userRepository?.findByEmail !== 'function' || typeof dal?.crmRepository?.findAllRoles !== 'function' ||
@@ -158,21 +158,10 @@ function createNativeHandler({ server, readConfig, receiptKey, profile, nativeMe
       await bruteForce.addAttemptForLogin(user.username, body.audit.remoteAddress);
       user = await eligible(body.nativeUserId);
       configured(body, await state());
-      if (user.totpAuthEnabled) {
-        if (profile.legacyTotpSecretFlag && user.totpAuthSecretDeciphered !== true) fail('MFA_LOCAL_LOGIN_REQUIRED');
-        const challenge = await auth.createTwoFactorToken(user);
-        try {
-          const checked = await auth.validateTwoFactorToken(challenge);
-          const metadata = await tokenMetadata(checked, 'two-factor');
-          configured(body, await state());
-          await eligible(user.id);
-          const expiry = seconds(metadata.expiresAt);
-          Object.assign(attempt, { kind: 'mfa', challengeHash: crypto.createHash('sha256').update(challenge).digest('hex'),
-            challengeExpiresAt: expiry * 1000, until: Math.max(attempt.until, (expiry + 31) * 1000),
-            configRevision: body.configRevision });
-          return { kind: 'mfa', twoFactorToken: challenge, expiresAt: expiry, user: projection(user), receipt: receipts.issue(user.id, 'mfa', challenge) };
-        } catch (error) { await auth.removeToken(challenge); throw error; }
-      }
+      // The authenticated RP has already validated the OIDC identity. The
+      // provider owns authentication/MFA for this path. Issue through the
+      // native factory without changing the account's local TOTP settings;
+      // native password routes continue to enforce those settings themselves.
       const pair = await auth.createSessionToken({ cmUser: user, data: { ucrmOidc: { v: 2, transactionId: body.transactionId } } });
       attempt.kind = 'consumed';
       return await fullResult(body, user, pair, true);
@@ -183,49 +172,11 @@ function createNativeHandler({ server, readConfig, receiptKey, profile, nativeMe
     } finally { attempt.busy = false; }
   }
   async function completeMfa(body) {
+    // An adapter upgrade already invalidates in-memory MFA attempts. Never
+    // promote a legacy challenge into a session under the new OIDC policy.
+    // Keep protocol-2 receipt verification and revoke support for safe cleanup.
     receipts.verify(body.receipt, body.nativeUserId, 'mfa', body.twoFactorToken);
-    const attempt = attempts.get(body.transactionId);
-    if (!attempt || attempt.kind !== 'mfa' || attempt.nativeUserId !== body.nativeUserId || attempt.challengeExpiresAt <= now()) fail('MFA_EXPIRED');
-    if (attempt.busy) fail('MFA_IN_PROGRESS');
-    if (attempt.configRevision !== body.configRevision || attempt.challengeHash !== crypto.createHash('sha256').update(body.twoFactorToken).digest('hex')) fail('MFA_INVALID');
-    attempt.busy = true;
-    try {
-      const user = await eligible(body.nativeUserId);
-      if (!user.totpAuthEnabled || (profile.legacyTotpSecretFlag && user.totpAuthSecretDeciphered !== true)) fail('ADMISSION_DENIED');
-      configured(body, await state());
-      const checked = await auth.validateTwoFactorToken(body.twoFactorToken);
-      if (!checked?.valid || checked.credentials?.userId !== user.id) fail('MFA_EXPIRED');
-      const response = await server.inject({ method: 'POST', url: '/nms/api/v2.1/user/login/totpauth',
-        remoteAddress: body.audit.remoteAddress, headers: { 'user-agent': body.audit.userAgent },
-        payload: { token: body.twoFactorToken, verificationCode: body.verificationCode } });
-      if (response.statusCode !== 200) {
-        if (response.statusCode === 429) fail('RATE_LIMITED');
-        if (response.statusCode === 401) { attempt.kind = 'consumed'; fail('MFA_EXPIRED'); }
-        if (response.statusCode === 403) fail('MFA_INVALID');
-        fail('NATIVE_UNAVAILABLE');
-      }
-      attempt.kind = 'consumed';
-      const token = response.headers?.['x-auth-token'];
-      if (typeof token !== 'string' || !UUID.test(token)) {
-        // If an unexpected native response still names a session cookie, clean
-        // up that exact native artifact before failing without a handoff.
-        const cookies = response.headers?.['set-cookie'];
-        for (const cookie of Array.isArray(cookies) ? cookies : typeof cookies === 'string' ? [cookies] : []) {
-          const value = /^nms-session=([^;]+)(?:;|$)/.exec(cookie)?.[1];
-          if (value && UUID.test(value)) await auth.removeTokenBySessionId(value);
-        }
-        fail('NATIVE_UNAVAILABLE');
-      }
-      // Obtain the paired native cookie identifier from the native validator,
-      // not by parsing/synthesizing native Set-Cookie text.
-      const valid = await auth.validateApiToken(token, body.audit.remoteAddress);
-      const sessionId = valid?.artifacts?.ucrmSessionId;
-      if (!valid?.valid || valid.credentials?.userId !== user.id || typeof sessionId !== 'string' || !UUID.test(sessionId)) {
-        await auth.removeToken(token); fail('ADMISSION_DENIED');
-      }
-      return await fullResult(body, user, { token, ucrmSessionId: sessionId }, false);
-    } catch (error) { throw nativeError(error); }
-    finally { attempt.busy = false; }
+    fail('MFA_EXPIRED');
   }
   return async function handle(body) {
     parse(body);

@@ -57,8 +57,9 @@ final class Provider implements ClientInterface {
     }
 }
 final class Adapter {
+    // Enable legacyMfa explicitly only for rolling-upgrade challenge coverage.
     public array $users; public array $sessions=[]; public array $challenges=[]; public int $issues=0; public bool $enabled=true;
-    public bool $unavailable=false; public bool $mfaError=false; public string $epoch; public string $revision;
+    public bool $unavailable=false; public bool $mfaError=false; public bool $legacyMfa=false; public string $epoch; public string $revision;
     public function __construct(private Crypto $crypto) {
         $this->epoch=str_repeat('a',64);$this->revision=str_repeat('b',64);
         $id='11111111-1111-4111-8111-111111111111';
@@ -79,7 +80,7 @@ final class Adapter {
             $r=['kind'=>'user','user'=>$users[0]];
         } elseif ($op==='issue') {
             ++$this->issues;$u=$this->users[$b['nativeUserId']];
-            if($u['totpAuthEnabled']){$id=uuid();$this->challenges[$id]=$u['id'];$r=['kind'=>'mfa','twoFactorToken'=>$id,'expiresAt'=>time()+300,'receipt'=>'test-receipt-'.$id,'user'=>$u];}
+            if($this->legacyMfa&&$u['totpAuthEnabled']){$id=uuid();$this->challenges[$id]=$u['id'];$r=['kind'=>'mfa','twoFactorToken'=>$id,'expiresAt'=>time()+300,'receipt'=>'test-receipt-'.$id,'user'=>$u];}
             else{$r=$this->pair($u);}
         } elseif($op==='complete-mfa'){
             if($this->mfaError)return $this->error('NATIVE_UNAVAILABLE');
@@ -200,7 +201,7 @@ try {
     $x=fixture();$a=login($x);callback($x,$a);denied('other signed in identity prevents handoff',fn()=>$x['app']->handoff($a['browser'],$a['start']['flowId'],$a['audit'],['nativeUserId'=>uuid()]),'SIGN_OUT_OTHER_ACCOUNT');
     check('account mismatch produces no binding',$x['store']->one('SELECT COUNT(*) AS n FROM bindings')['n']===0);
 
-    $x=fixture();$uid=array_key_first($x['adapter']->users);$x['adapter']->users[$uid]['totpAuthEnabled']=true;$a=login($x);callback($x,$a);
+    $x=fixture();$uid=array_key_first($x['adapter']->users);$x['adapter']->legacyMfa=true;$x['adapter']->users[$uid]['totpAuthEnabled']=true;$a=login($x);callback($x,$a);
     $m=$x['app']->handoff($a['browser'],$a['start']['flowId'],$a['audit'],null);check('MFA challenge stays server only',$m===['kind'=>'mfa']);
     denied('wrong native OTP fails',fn()=>$x['app']->completeMfa($a['browser'],$a['start']['flowId'],'000000',$a['audit'],null),'MFA_INVALID');
     check('MFA failure creates no session',$x['store']->one('SELECT COUNT(*) AS n FROM sessions')['n']===0);

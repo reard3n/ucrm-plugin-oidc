@@ -2,8 +2,10 @@
 
 Sign in to existing UISP and UCRM staff accounts through an OpenID Connect
 provider. UCRM supplies the configuration interface. The native applications
-continue to issue and validate sessions, enforce permissions and MFA, and own
-session expiration and local logout.
+continue to issue and validate sessions, enforce permissions, and own session
+expiration and local logout. OIDC sign-in trusts the provider's authentication
+and MFA policy; it does not ask for an additional native authenticator code.
+Native password login still enforces the account's native MFA settings.
 
 The **0.3.1 release candidate has passed package qualification, native frontend
 updates and scoped provider login/logout checks** on both listed profiles.
@@ -32,6 +34,11 @@ in the packaged plugin. Bundled dependencies retain their own license notices.
   matching plugin-issued native sessions. Durable cleanup survives an unavailable
   native adapter. Provider token expiry alone does not terminate native sessions.
 - Keep native password login as the recovery path.
+
+The OIDC authenticator policy requires the updated native adapter from
+[issue #10](https://github.com/reard3n/ucrm-plugin-oidc/issues/10). Updating the
+plugin ZIP alone cannot change an older adapter's MFA behavior. Account
+authenticator settings, passwords and permissions are never changed by OIDC.
 
 Installation requires a one-time operator setup of the native session adapter,
 private socket/key/state mounts and callback logging protection. Uploading the

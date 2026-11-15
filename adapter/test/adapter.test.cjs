@@ -224,67 +224,74 @@ test('receipts authorize only exact artifact/user/kind and survive handler resta
   assert.equal(ctx.records.size, 0);
   assert.deepEqual(await restart({ ...body, serverEpoch: newEpoch }), { kind: 'revoked' });
 });
-test('MFA issues no full pair, injects unchanged native route, rejects wrong code and challenge replay', async () => {
-  const ctx = fixture({ user: { totpAuthEnabled: true } });
-  const request = await ctx.body('issue');
-  const challenge = await ctx.handler(request);
-  assert.equal(challenge.kind, 'mfa');
-  assert.equal(challenge.expiresAt, 1800000180);
-  assert.equal(challenge.token, undefined);
-  assert.equal(challenge.ucrmSessionId, undefined);
-  assert.equal(ctx.calls.created, 0);
-  const completion = { operation: 'complete-mfa', nativeUserId: ctx.user.id, transactionId: request.transactionId,
-    twoFactorToken: challenge.twoFactorToken, receipt: challenge.receipt, verificationCode: '000000',
-    serverEpoch: ctx.epoch, configRevision: request.configRevision, audit };
-  await rejectsCode(ctx.handler(completion), 'MFA_INVALID');
-  assert.equal(ctx.calls.created, 0);
-  const full = await ctx.handler({ ...completion, verificationCode: '123456' });
-  assert.equal(full.kind, 'session');
-  assert.equal(full.user.id, ctx.user.id);
-  assert.equal(ctx.calls.created, 1);
-  await rejectsCode(ctx.handler({ ...completion, verificationCode: '123456' }), 'MFA_EXPIRED');
-  // Native injected handler owns the success counter/audit; adapter does not duplicate it.
-  assert.equal(ctx.calls.success.length, 0);
+test('OIDC directly issues a receipted native session for enrolled and legacy TOTP accounts', async () => {
+  for (const profile of Object.values(PROFILES)) {
+    for (const flag of [true, false, undefined]) {
+      const ctx = fixture({ user: { totpAuthEnabled: true, totpAuthSecretDeciphered: flag }, handler: { profile } });
+      const before = structuredClone(ctx.user);
+      const request = await ctx.body('issue');
+      const pair = await ctx.handler(request);
+      assert.equal(pair.kind, 'session');
+      assert.equal(pair.user.totpAuthEnabled, true);
+      assert.equal(pair.user.role, before.role);
+      assert.equal(pair.user.ucrmRole, before.ucrmRole);
+      assert.equal(pair.cookieTtlMs, before.sessionTimeout);
+      assert.equal(pair.twoFactorToken, undefined);
+      assert.equal(pair.user.password, undefined);
+      assert.equal(pair.user.totpAuthSecret, undefined);
+      assert.equal(ctx.calls.created, 1);
+      assert.equal(ctx.calls.challenges, 0);
+      assert.equal(ctx.calls.injected.length, 0);
+      assert.equal(ctx.calls.success.length, 1);
+      assert.deepEqual(ctx.user, before);
+      assert.equal((await ctx.server.plugins.auth.validateApiToken(pair.token)).valid, true);
+      assert.equal((await ctx.server.plugins.auth.validateSessionId(pair.ucrmSessionId)).valid, true);
+      await rejectsCode(ctx.handler(request), 'TRANSACTION_USED');
+      await ctx.handler({ operation: 'revoke', nativeUserId: ctx.user.id, kind: 'session',
+        artifact: pair.ucrmSessionId, receipt: pair.receipt, serverEpoch: ctx.epoch });
+      assert.equal(ctx.records.size, 0);
+    }
+  }
 });
-test('MFA disabled user, expired challenge, native legacy secret and cross-user substitution fail closed', async () => {
-  const legacy = fixture({ user: { totpAuthEnabled: true, totpAuthSecretDeciphered: false } });
-  await rejectsCode(legacy.issue(), 'MFA_LOCAL_LOGIN_REQUIRED');
-  assert.equal(legacy.calls.challenges, 0);
+
+test('TOTP enrollment never relaxes native eligibility, configuration, assertion or cleanup checks', async () => {
+  for (const user of [{ enabled: false }, { forceChangePassword: true }, { ucrmRole: null }]) {
+    const ctx = fixture({ user: { totpAuthEnabled: true, ...user } });
+    await rejectsCode(ctx.issue(), 'ADMISSION_DENIED');
+    assert.equal(ctx.calls.created, 0);
+  }
   const ctx = fixture({ user: { totpAuthEnabled: true } });
-  const request = await ctx.body('issue');
-  const challenge = await ctx.handler(request);
-  const body = { operation: 'complete-mfa', nativeUserId: ctx.user.id, transactionId: request.transactionId,
-    twoFactorToken: challenge.twoFactorToken, receipt: challenge.receipt, verificationCode: '123456',
-    serverEpoch: ctx.epoch, configRevision: request.configRevision, audit };
-  await rejectsCode(ctx.handler({ ...body, nativeUserId: UUID() }), 'RECEIPT_INVALID');
-  ctx.user.enabled = false;
-  await rejectsCode(ctx.handler(body), 'ADMISSION_DENIED');
-  ctx.user.enabled = true;
-  ctx.time += 181000;
-  await rejectsCode(ctx.handler(body), 'MFA_EXPIRED');
-  assert.equal(ctx.calls.injected.length, 0);
-});
-test('short native MFA challenge expiry never shortens issue replay reservation', async () => {
-  const ctx = fixture({ user: { totpAuthEnabled: true } });
-  ctx.challengeTtl = 1000;
   const body = await ctx.body('issue');
-  await ctx.handler(body);
-  ctx.time += 2000;
-  await rejectsCode(ctx.handler(body), 'TRANSACTION_USED');
-  assert.equal(ctx.calls.challenges, 1);
+  await rejectsCode(ctx.handler({ ...body, assertedAt: body.assertedAt - 70, expiresAt: body.expiresAt - 70 }), 'ASSERTION_EXPIRED');
+  ctx.config = Buffer.from('{"oidcEnabled":false}');
+  await rejectsCode(ctx.issue(), 'OIDC_DISABLED');
+  ctx.config = Buffer.from('{"oidcEnabled":true}');
+  const create = ctx.server.plugins.auth.createSessionToken;
+  ctx.server.plugins.auth.createSessionToken = async value => {
+    const pair = await create(value); ctx.user.enabled = false; return pair;
+  };
+  await rejectsCode(ctx.issue(), 'ADMISSION_DENIED');
+  assert.equal(ctx.records.size, 0);
+  assert.equal(ctx.calls.challenges, 0);
 });
-test('unexpected native success without token cleans exact returned cookie artifact', async () => {
+
+test('legacy MFA receipts allow cleanup but cannot be promoted to new sessions', async () => {
   const ctx = fixture({ user: { totpAuthEnabled: true } });
+  const challenge = await ctx.server.plugins.auth.createTwoFactorToken(ctx.user);
+  const receipt = createReceipts(receiptKey).issue(ctx.user.id, 'mfa', challenge);
   const request = await ctx.body('issue');
-  const challenge = await ctx.handler(request);
-  const orphan = await ctx.server.plugins.auth.createSessionToken({ cmUser: ctx.user });
-  ctx.server.inject = async () => ({ statusCode: 200, headers: { 'set-cookie': ['nms-session=' + orphan.ucrmSessionId + '; HttpOnly'] } });
-  const body = { operation: 'complete-mfa', nativeUserId: ctx.user.id, transactionId: request.transactionId,
-    twoFactorToken: challenge.twoFactorToken, receipt: challenge.receipt, verificationCode: '123456',
+  const completion = { operation: 'complete-mfa', nativeUserId: ctx.user.id, transactionId: request.transactionId,
+    twoFactorToken: challenge, receipt, verificationCode: '123456',
     serverEpoch: ctx.epoch, configRevision: request.configRevision, audit };
-  await rejectsCode(ctx.handler(body), 'NATIVE_UNAVAILABLE');
-  assert.equal((await ctx.server.plugins.auth.validateApiToken(orphan.token)).valid, false);
+  await rejectsCode(ctx.handler({ ...completion, nativeUserId: UUID() }), 'RECEIPT_INVALID');
+  await rejectsCode(ctx.handler(completion), 'MFA_EXPIRED');
+  assert.equal(ctx.calls.created, 0);
+  assert.equal(ctx.calls.injected.length, 0);
+  ctx.config = Buffer.from('{"oidcEnabled":false}');
+  await ctx.handler({ operation: 'revoke', nativeUserId: ctx.user.id, kind: 'mfa', artifact: challenge, receipt, serverEpoch: ctx.epoch });
+  assert.equal(ctx.records.size, 0);
 });
+
 test('describe recognizes NMS-only existing caller without granting OIDC eligibility', async () => {
   const ctx = fixture({ user: { ucrmRole: null } });
   const pair = await ctx.server.plugins.auth.createSessionToken({ cmUser: ctx.user });
@@ -326,5 +333,5 @@ test('latest profile accepts absence of retired legacy MFA field and uses suppli
   const handler = createNativeHandler({ server: ctx.server, profile: PROFILES['uisp-3.1.73'], receiptKey,
     nativeMessages, readConfig: async () => ctx.config, epoch: ctx.epoch, now: () => ctx.time });
   const body = await ctx.body('issue');
-  assert.equal((await handler(body)).kind, 'mfa');
+  assert.equal((await handler(body)).kind, 'session');
 });
